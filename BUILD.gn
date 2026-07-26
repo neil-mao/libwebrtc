@@ -277,17 +277,20 @@ rtc_shared_library("libwebrtc") {
   }
 }
 
-rtc_test("libwebrtc_cpp_api_unittests") {
-  testonly = true
+# Android AAR 构建不需要单元测试 target，且 //test:test_main 在 fork 中不存在
+if (!is_android) {
+  rtc_test("libwebrtc_cpp_api_unittests") {
+    testonly = true
 
-  sources = [
-     "test/peerconnection_factory.test.cc",
-  ]
+    sources = [
+       "test/peerconnection_factory.test.cc",
+    ]
 
-   deps = [
-    ":libwebrtc",
-    "//testing/gtest",
-    "//test:test_support",
-    "//test:test_main",
-  ]
+     deps = [
+      ":libwebrtc",
+      "//testing/gtest",
+      "//test:test_support",
+      "//test:test_main",
+    ]
+  }
 }
