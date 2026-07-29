@@ -452,10 +452,12 @@ bool RTCPeerConnectionImpl::Initialize() {
   }
 
   // ===== jteam 分支新增：强制保留 lw_extra 符号 (防止 --gc-sections 剔除) =====
+  // 使用 static volatile + asm barrier 防止 LTO 优化掉对 lw_extra_Utils 的引用
   {
-    volatile auto* _keep_lw_extra = reinterpret_cast<void*>(
-        &libwebrtc::lw_extra_Utils::CreateExtendedPeerConnection);
-    (void)_keep_lw_extra;
+    static volatile const void* _keep_lw_extra =
+        reinterpret_cast<const void*>(
+            &libwebrtc::lw_extra_Utils::CreateExtendedPeerConnection);
+    __asm__ __volatile__("" : : "r"(_keep_lw_extra));
   }
 
   RTCMediaConstraintsImpl* media_constraints =

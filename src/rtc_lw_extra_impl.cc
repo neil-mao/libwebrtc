@@ -570,6 +570,7 @@ lw_extra_PeerConnectionImpl::GetAllTransceivers() {
 // ==================== Utils ====================
 
 lw_extra_PeerConnection*
+__attribute__((used, visibility("default")))
 lw_extra_Utils::CreateExtendedPeerConnection(
     scoped_refptr<RTCPeerConnection> peer_connection) {
   if (!peer_connection) {
