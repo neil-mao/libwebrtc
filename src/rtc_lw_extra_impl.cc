@@ -541,7 +541,7 @@ lw_extra_RtpTransceiver* lw_extra_PeerConnectionImpl::GetTransceiverByMid(
   auto all_transceivers = peer_connection_->transceivers();
   auto std_transceivers = all_transceivers.std_vector();
   for (const auto& transceiver : std_transceivers) {
-    if (transceiver->mid() == mid) {
+    if (std::string(transceiver->mid().c_string()) == std::string(mid.c_string())) {
       return CreateOrGetTransceiver(transceiver);
     }
   }
@@ -550,10 +550,10 @@ lw_extra_RtpTransceiver* lw_extra_PeerConnectionImpl::GetTransceiverByMid(
 
 vector<lw_extra_RtpTransceiver*>
 lw_extra_PeerConnectionImpl::GetAllTransceivers() {
-  vector<lw_extra_RtpTransceiver*> result;
+  std::vector<lw_extra_RtpTransceiver*> std_result;
 
   if (!peer_connection_) {
-    return result;
+    return vector<lw_extra_RtpTransceiver*>(std_result);
   }
 
   auto all_transceivers = peer_connection_->transceivers();
@@ -561,10 +561,10 @@ lw_extra_PeerConnectionImpl::GetAllTransceivers() {
   for (const auto& transceiver : std_transceivers) {
     auto* impl = CreateOrGetTransceiver(transceiver);
     if (impl) {
-      result.push_back(impl);
+      std_result.push_back(impl);
     }
   }
-  return result;
+  return vector<lw_extra_RtpTransceiver*>(std_result);
 }
 
 // ==================== Utils ====================
@@ -589,7 +589,7 @@ lw_extra_Utils::CreateExtendedPeerConnection(
 
   auto* impl = new lw_extra_PeerConnectionImpl(
       peer_connection, video_encoder_factory_.get(),
-      audio_encoder_factory_.get());
+      audio_encoder_factory_);
   return impl;
 }
 
