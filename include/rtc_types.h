@@ -69,6 +69,30 @@ enum BundlePolicy {
 
 enum class SdpSemantics { kPlanB, kUnifiedPlan };
 
+// ==================== jteam 分支新增：UDP 端口范围配置 ====================
+
+/**
+ * @brief UDP 端口范围配置
+ *
+ * 用于控制 WebRTC ICE 候选所使用的 UDP 端口范围
+ * 新增于 jteam 分支
+ */
+struct RTCPUdpPortRange {
+  uint16_t min_port = 0;  // 最小端口号，0 表示不限制
+  uint16_t max_port = 0;  // 最大端口号，0 表示不限制
+
+  /**
+   * @brief 检查端口范围是否有效
+   * @return true 如果有效
+   */
+  bool IsValid() const {
+    return min_port == 0 || max_port == 0 ||
+           (min_port >= 1024 && max_port <= 65535 && min_port <= max_port);
+  }
+};
+
+// ========================================================================
+
 struct RTCConfiguration {
   IceServer ice_servers[kMaxIceServerSize];
   IceTransportsType type = IceTransportsType::kAll;
@@ -99,8 +123,6 @@ struct RTCConfiguration {
   uint32_t local_video_bandwidth = 512;
 
   // ===== jteam 分支新增：UDP 端口范围配置 =====
-  // 用于控制 WebRTC ICE 候选所使用的 UDP 端口范围
-  // 默认值 {0, 0} 表示不限制端口范围
   RTCPUdpPortRange udp_port_range;
 };
 
@@ -125,32 +147,6 @@ struct RTCAudioOptions {
 
   bool highpass_filter = false;
 };
-
-// ==================== 新增：UDP 端口范围配置 ====================
-
-/**
- * @brief UDP 端口范围配置
- *
- * 用于控制 WebRTC ICE 候选所使用的 UDP 端口范围
- * 新增于 jteam 分支
- */
-struct RTCPUdpPortRange {
-  uint16_t min_port = 0;  // 最小端口号，0 表示不限制
-  uint16_t max_port = 0;  // 最大端口号，0 表示不限制
-
-  /**
-   * @brief 检查端口范围是否有效
-   * @return true 如果有效
-   */
-  bool IsValid() const {
-    return min_port == 0 || max_port == 0 ||
-           (min_port >= 1024 && max_port <= 65535 && min_port <= max_port);
-  }
-};
-
-// 在 RTCConfiguration 中添加端口范围字段（保持向后兼容）
-// 新增字段：udp_port_range，默认值为 {0, 0} 表示不限制端口范围
-// 此注释标记为 jteam 分支新增字段
 
 }  // namespace libwebrtc
 
