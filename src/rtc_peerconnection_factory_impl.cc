@@ -78,13 +78,14 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
     worker_thread_->BlockingCall([&] { CreateAudioDeviceModule_w(); });
   }
 
-  if (!audio_processing_impl_ && !audio_disabled) {
+  // 音频处理 + transport 始终创建 (WebRtcVoiceEngine 不接受 nullptr)
+  if (!audio_processing_impl_) {
     worker_thread_->BlockingCall([this] {
       audio_processing_impl_ = new RefCountedObject<RTCAudioProcessingImpl>();
     });
   }
 
-  if (!audio_transport_factory_ && !audio_disabled) {
+  if (!audio_transport_factory_) {
     worker_thread_->BlockingCall([this] {
       audio_transport_factory_ =
           webrtc::make_ref_counted<CustomAudioTransportFactory>();
@@ -95,8 +96,8 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
     rtc_peerconnection_factory_ = CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),
         audio_device_module_,
-        audio_disabled ? nullptr : webrtc::CreateBuiltinAudioEncoderFactory(),
-        audio_disabled ? nullptr : webrtc::CreateBuiltinAudioDecoderFactory(),
+        webrtc::CreateBuiltinAudioEncoderFactory(),
+        webrtc::CreateBuiltinAudioDecoderFactory(),
 #if defined(USE_INTEL_MEDIA_SDK)
         CreateIntelVideoEncoderFactory(), CreateIntelVideoDecoderFactory(),
 #else
@@ -104,9 +105,9 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
         webrtc::CreateBuiltinVideoDecoderFactory(),
 #endif
         nullptr,
-        audio_disabled ? nullptr : audio_processing_impl_->GetAudioProcessing(),
+        audio_processing_impl_->GetAudioProcessing(),
         nullptr, nullptr,
-        audio_disabled ? nullptr : audio_transport_factory_);
+        audio_transport_factory_);
   }
 
   if (!rtc_peerconnection_factory_.get()) {
