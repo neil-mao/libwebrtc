@@ -15,6 +15,7 @@
 #include "rtc_rtp_receiver_impl.h"
 #include "rtc_rtp_sender_impl.h"
 #include "rtc_rtp_transceiver_impl.h"
+#include "rtc_lw_extra_impl.h"
 
 using webrtc::Thread;
 
@@ -448,6 +449,13 @@ bool RTCPeerConnectionImpl::Initialize() {
     RTC_LOG(LS_INFO) << "UDP port range set: "
                      << configuration_.udp_port_range.min_port << " - "
                      << configuration_.udp_port_range.max_port;
+  }
+
+  // ===== jteam 分支新增：强制保留 lw_extra 符号 (防止 --gc-sections 剔除) =====
+  {
+    volatile auto* _keep_lw_extra = reinterpret_cast<void*>(
+        &libwebrtc::lw_extra_Utils::CreateExtendedPeerConnection);
+    (void)_keep_lw_extra;
   }
 
   RTCMediaConstraintsImpl* media_constraints =
