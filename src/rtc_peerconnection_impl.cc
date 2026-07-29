@@ -437,6 +437,19 @@ bool RTCPeerConnectionImpl::Initialize() {
 
   config.set_dscp(configuration_.enable_dscp);
 
+  // ===== jteam 分支新增：应用 UDP 端口范围配置 =====
+  if (configuration_.udp_port_range.IsValid() &&
+      configuration_.udp_port_range.min_port > 0 &&
+      configuration_.udp_port_range.max_port > 0) {
+    config.port_allocator_config.min_port =
+        configuration_.udp_port_range.min_port;
+    config.port_allocator_config.max_port =
+        configuration_.udp_port_range.max_port;
+    RTC_LOG(LS_INFO) << "UDP port range set: "
+                     << configuration_.udp_port_range.min_port << " - "
+                     << configuration_.udp_port_range.max_port;
+  }
+
   RTCMediaConstraintsImpl* media_constraints =
       static_cast<RTCMediaConstraintsImpl*>(constraints_.get());
   webrtc::MediaConstraints rtc_constraints(media_constraints->GetMandatory(),

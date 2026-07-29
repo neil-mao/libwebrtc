@@ -19,6 +19,7 @@
 #include "api/video/video_frame_type.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_codec_type.h"
+#include "rtc_base/synchronization/mutex.h"
 #include "rtc_lw_extra.h"
 #include "rtc_rtp_transceiver.h"
 #include "rtc_rtp_sender.h"
@@ -108,12 +109,12 @@ class lw_extra_PassthroughAudioEncoder : public webrtc::AudioEncoder {
   /**
    * @brief 直接发送编码后的音频帧
    *
+   * 将预编码的音频数据放入队列，等待 EncodeImpl 被 WebRTC 音频管道调用时发送
+   *
    * @param frame 编码后的音频帧数据
-   * @param encoded 输出缓冲区
-   * @return 编码信息
+   * @return true 数据已入队，false 入队失败
    */
-  EncodedInfo SendEncodedFrame(const lw_extra_EncodedAudioFrame& frame,
-                               webrtc::Buffer* encoded);
+  bool SendEncodedFrame(const lw_extra_EncodedAudioFrame& frame);
 
  protected:
   EncodedInfo EncodeImpl(uint32_t rtp_timestamp,
@@ -125,6 +126,14 @@ class lw_extra_PassthroughAudioEncoder : public webrtc::AudioEncoder {
   int sample_rate_hz_ = 48000;
   size_t num_channels_ = 2;
   bool initialized_ = false;
+
+  // 编码音频帧队列，由 SendEncodedFrame 写入，EncodeImpl 消费
+  struct PendingAudioFrame {
+    std::vector<uint8_t> data;
+    uint32_t timestamp;
+  };
+  std::vector<PendingAudioFrame> pending_frames_;
+  webrtc::Mutex mutex_;
 };
 
 // ==================== 视频编码器工厂 ====================

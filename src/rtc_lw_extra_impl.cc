@@ -28,10 +28,11 @@ lw_extra_PassthroughVideoEncoder::~lw_extra_PassthroughVideoEncoder() {}
 int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
     const webrtc::VideoCodec* codec_settings, int32_t number_of_cores,
     size_t max_payload_size) {
-  if (codec_settings_.codecType != webrtc::kVideoCodecH264 &&
-      codec_settings_.codecType != webrtc::kVideoCodecAV1) {
+  // 检查传入的 codec_settings（而非成员变量）的编码类型
+  if (codec_settings->codecType != webrtc::kVideoCodecH264 &&
+      codec_settings->codecType != webrtc::kVideoCodecAV1) {
     RTC_LOG(LS_ERROR) << "Unsupported codec type: "
-                      << codec_settings_.codecType;
+                      << codec_settings->codecType;
     return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
   }
   codec_settings_ = *codec_settings;
@@ -169,37 +170,44 @@ webrtc::AudioEncoder::EncodedInfo
 lw_extra_PassthroughAudioEncoder::EncodeImpl(
     uint32_t rtp_timestamp, webrtc::ArrayView<const int16_t> audio,
     webrtc::Buffer* encoded) {
-  // 传递编码器不进行实际的 PCM -> Opus 编码
-  // 直接返回空的编码信息
+  // 从队列中取出预编码数据（如果有）
+  webrtc::MutexLock lock(&mutex_);
   EncodedInfo info;
-  info.encoded_bytes = 0;
   info.encoded_timestamp = rtp_timestamp;
   info.payload_type = payload_type_;
+
+  if (!pending_frames_.empty()) {
+    auto& pending = pending_frames_.front();
+    if (encoded && !pending.data.empty()) {
+      encoded->AppendData(pending.data.data(), pending.data.size());
+    }
+    info.encoded_bytes = pending.data.size();
+    info.encoded_timestamp = pending.timestamp;
+    info.send_even_if_empty = true;
+    info.speech = true;
+    info.encoder_type = CodecType::kOpus;
+    pending_frames_.erase(pending_frames_.begin());
+  } else {
+    // 没有预编码数据，返回空编码信息
+    info.encoded_bytes = 0;
+  }
   return info;
 }
 
-webrtc::AudioEncoder::EncodedInfo
-lw_extra_PassthroughAudioEncoder::SendEncodedFrame(
-    const lw_extra_EncodedAudioFrame& frame, webrtc::Buffer* encoded) {
+bool lw_extra_PassthroughAudioEncoder::SendEncodedFrame(
+    const lw_extra_EncodedAudioFrame& frame) {
   if (!frame.data || frame.size == 0) {
-    EncodedInfo info;
-    info.encoded_bytes = 0;
-    return info;
+    RTC_LOG(LS_ERROR) << "Invalid audio frame data";
+    return false;
   }
 
-  // 直接将编码数据放入缓冲区
-  if (encoded) {
-    encoded->AppendData(frame.data, frame.size);
-  }
-
-  EncodedInfo info;
-  info.encoded_bytes = frame.size;
-  info.encoded_timestamp = frame.timestamp;
-  info.payload_type = payload_type_;
-  info.send_even_if_empty = true;
-  info.speech = true;
-  info.encoder_type = CodecType::kOpus;
-  return info;
+  // 将编码数据放入队列，等待 EncodeImpl 被调用时发送
+  webrtc::MutexLock lock(&mutex_);
+  PendingAudioFrame pending;
+  pending.data.assign(frame.data, frame.data + frame.size);
+  pending.timestamp = frame.timestamp;
+  pending_frames_.push_back(std::move(pending));
+  return true;
 }
 
 // ==================== PassthroughVideoEncoderFactory ====================
@@ -269,8 +277,10 @@ lw_extra_PassthroughAudioEncoderFactory::GetSupportedEncoders() {
 std::optional<webrtc::AudioCodecInfo>
 lw_extra_PassthroughAudioEncoderFactory::QueryAudioEncoder(
     const webrtc::SdpAudioFormat& format) {
+  // SdpAudioFormat name is typically lowercase, use direct comparison
   if (format.name == "opus") {
-    return webrtc::AudioCodecInfo{1, 48000, 2};
+    // AudioCodecInfo(sample_rate_hz, num_channels, bitrate_bps)
+    return webrtc::AudioCodecInfo{48000, 2, 64000};
   }
   return std::nullopt;
 }
@@ -320,13 +330,8 @@ bool lw_extra_EncodedSenderImpl::SendEncodedAudioFrame(
     return false;
   }
 
-  // 创建临时缓冲区
-  webrtc::Buffer encoded;
-  auto info = audio_encoder_->SendEncodedFrame(frame, &encoded);
-
-  // 注意：在实际使用中，编码数据需要通过音频发送通道发送
-  // 这里返回成功表示数据已准备好
-  return info.encoded_bytes > 0;
+  // 将编码数据放入队列，等待 WebRTC 音频管道调用 EncodeImpl 时发送
+  return audio_encoder_->SendEncodedFrame(frame);
 }
 
 void lw_extra_EncodedSenderImpl::SetVideoEncodedSend(bool enabled) {
