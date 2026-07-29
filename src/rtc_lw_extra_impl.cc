@@ -3,6 +3,7 @@
 #include "api/video_codecs/video_codec.h"
 #include "api/video/video_codec_type.h"
 #include "modules/video_coding/include/video_codec_interface.h"
+#include "modules/video_coding/include/video_error_codes.h"
 #include "rtc_base/buffer.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/synchronization/mutex.h"
@@ -13,7 +14,7 @@ namespace libwebrtc {
 
 std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
     lw_extra_Utils::video_encoder_factory_ = nullptr;
-std::unique_ptr<lw_extra_PassthroughAudioEncoderFactory>
+lw_extra_PassthroughAudioEncoderFactory*
     lw_extra_Utils::audio_encoder_factory_ = nullptr;
 
 // ==================== PassthroughVideoEncoder ====================
@@ -107,12 +108,12 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
 
   // 设置帧类型
   encoded_image.SetFrameType(
-      frame.is_key_frame ? webrtc::kVideoFrameKey
-                         : webrtc::kVideoFrameDelta);
+      frame.is_key_frame ? webrtc::VideoFrameType::kVideoFrameKey
+                         : webrtc::VideoFrameType::kVideoFrameDelta);
 
   // 设置编解码类型
   webrtc::CodecSpecificInfo codec_specific_info;
-  codec_specific_info.codec =
+  codec_specific_info.codecType =
       (frame.codec == lw_extra_VideoCodec::kH264) ? webrtc::kVideoCodecH264
                                                   : webrtc::kVideoCodecAV1;
 
@@ -165,6 +166,11 @@ size_t lw_extra_PassthroughAudioEncoder::Max10MsFramesInAPacket() const {
 int lw_extra_PassthroughAudioEncoder::GetTargetBitrate() const { return 0; }
 
 void lw_extra_PassthroughAudioEncoder::Reset() { initialized_ = false; }
+
+std::optional<std::pair<webrtc::TimeDelta, webrtc::TimeDelta>>
+lw_extra_PassthroughAudioEncoder::GetFrameLengthRange() const {
+  return std::nullopt;
+}
 
 webrtc::AudioEncoder::EncodedInfo
 lw_extra_PassthroughAudioEncoder::EncodeImpl(
@@ -264,11 +270,11 @@ std::vector<webrtc::AudioCodecSpec>
 lw_extra_PassthroughAudioEncoderFactory::GetSupportedEncoders() {
   std::vector<webrtc::AudioCodecSpec> specs;
 
-  webrtc::AudioCodecSpec spec;
   webrtc::CodecParameterMap params;
   params["stereo"] = "1";
-  spec.format = webrtc::SdpAudioFormat("opus", 48000, 2, std::move(params));
-  spec.info = webrtc::AudioCodecInfo(48000, 2, 64000);
+  webrtc::AudioCodecSpec spec{
+      webrtc::SdpAudioFormat("opus", 48000, 2, std::move(params)),
+      webrtc::AudioCodecInfo(48000, 2, 64000)};
   specs.push_back(spec);
 
   return specs;
@@ -496,7 +502,8 @@ lw_extra_PeerConnectionImpl::CreateOrGetTransceiver(
   }
 
   auto mid = transceiver->mid();
-  auto it = transceivers_.find(mid);
+  std::string mid_str = mid.std_string();
+  auto it = transceivers_.find(mid_str);
   if (it != transceivers_.end()) {
     return it->second.get();
   }
@@ -504,7 +511,7 @@ lw_extra_PeerConnectionImpl::CreateOrGetTransceiver(
   auto impl = std::make_unique<lw_extra_RtpTransceiverImpl>(
       transceiver, video_factory_, audio_factory_);
   auto* ptr = impl.get();
-  transceivers_[mid] = std::move(impl);
+  transceivers_[mid_str] = std::move(impl);
   return ptr;
 }
 
@@ -516,7 +523,8 @@ lw_extra_PeerConnectionImpl::GetTransceiverByMediaType(
   }
 
   auto all_transceivers = peer_connection_->transceivers();
-  for (const auto& transceiver : all_transceivers) {
+  auto std_transceivers = all_transceivers.std_vector();
+  for (const auto& transceiver : std_transceivers) {
     if (transceiver->media_type() == media_type) {
       return CreateOrGetTransceiver(transceiver);
     }
@@ -531,7 +539,8 @@ lw_extra_RtpTransceiver* lw_extra_PeerConnectionImpl::GetTransceiverByMid(
   }
 
   auto all_transceivers = peer_connection_->transceivers();
-  for (const auto& transceiver : all_transceivers) {
+  auto std_transceivers = all_transceivers.std_vector();
+  for (const auto& transceiver : std_transceivers) {
     if (transceiver->mid() == mid) {
       return CreateOrGetTransceiver(transceiver);
     }
@@ -548,7 +557,8 @@ lw_extra_PeerConnectionImpl::GetAllTransceivers() {
   }
 
   auto all_transceivers = peer_connection_->transceivers();
-  for (const auto& transceiver : all_transceivers) {
+  auto std_transceivers = all_transceivers.std_vector();
+  for (const auto& transceiver : std_transceivers) {
     auto* impl = CreateOrGetTransceiver(transceiver);
     if (impl) {
       result.push_back(impl);
@@ -574,7 +584,7 @@ lw_extra_Utils::CreateExtendedPeerConnection(
   }
   if (!audio_encoder_factory_) {
     audio_encoder_factory_ =
-        std::make_unique<lw_extra_PassthroughAudioEncoderFactory>();
+        new lw_extra_PassthroughAudioEncoderFactory();
   }
 
   auto* impl = new lw_extra_PeerConnectionImpl(
@@ -624,9 +634,9 @@ lw_extra_PassthroughAudioEncoderFactory*
 lw_extra_Utils::GetAudioEncoderFactory() {
   if (!audio_encoder_factory_) {
     audio_encoder_factory_ =
-        std::make_unique<lw_extra_PassthroughAudioEncoderFactory>();
+        new lw_extra_PassthroughAudioEncoderFactory();
   }
-  return audio_encoder_factory_.get();
+  return audio_encoder_factory_;
 }
 
 }  // namespace libwebrtc

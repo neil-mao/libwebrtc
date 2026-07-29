@@ -106,6 +106,9 @@ class lw_extra_PassthroughAudioEncoder : public webrtc::AudioEncoder {
 
   void Reset() override;
 
+  std::optional<std::pair<webrtc::TimeDelta, webrtc::TimeDelta>>
+  GetFrameLengthRange() const override;
+
   /**
    * @brief 直接发送编码后的音频帧
    *
@@ -179,6 +182,12 @@ class lw_extra_PassthroughAudioEncoderFactory
   lw_extra_PassthroughAudioEncoderFactory();
   ~lw_extra_PassthroughAudioEncoderFactory() override;
 
+  void AddRef() const override { ref_count_++; }
+  webrtc::RefCountReleaseStatus Release() const override {
+    if (--ref_count_ == 0) delete this;
+    return webrtc::RefCountReleaseStatus::kDroppedLastRef;
+  }
+
   std::vector<webrtc::AudioCodecSpec> GetSupportedEncoders() override;
 
   std::optional<webrtc::AudioCodecInfo> QueryAudioEncoder(
@@ -198,6 +207,7 @@ class lw_extra_PassthroughAudioEncoderFactory
 
  private:
   lw_extra_PassthroughAudioEncoder* last_encoder_ = nullptr;
+  mutable int ref_count_ = 0;
 };
 
 // ==================== 编码数据发送器实现 ====================
@@ -321,7 +331,7 @@ class lw_extra_PeerConnectionImpl : public lw_extra_PeerConnection {
   scoped_refptr<RTCPeerConnection> peer_connection_;
   lw_extra_PassthroughVideoEncoderFactory* video_factory_;
   lw_extra_PassthroughAudioEncoderFactory* audio_factory_;
-  std::map<string, std::unique_ptr<lw_extra_RtpTransceiverImpl>> transceivers_;
+  std::map<std::string, std::unique_ptr<lw_extra_RtpTransceiverImpl>> transceivers_;
 
   lw_extra_RtpTransceiverImpl* CreateOrGetTransceiver(
       scoped_refptr<RTCRtpTransceiver> transceiver);
@@ -373,7 +383,7 @@ class lw_extra_Utils {
  private:
   static std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
       video_encoder_factory_;
-  static std::unique_ptr<lw_extra_PassthroughAudioEncoderFactory>
+  static lw_extra_PassthroughAudioEncoderFactory*
       audio_encoder_factory_;
 };
 
