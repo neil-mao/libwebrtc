@@ -96,6 +96,7 @@ rtc_shared_library("libwebrtc") {
     "include/rtc_video_source.h",
     "include/rtc_video_track.h",
     "include/rtc_logging.h",
+    "include/rtc_lw_extra.h",
     "include/helper.h",
     "src/helper.cc",
     "src/base/portable.cc",
@@ -159,6 +160,8 @@ rtc_shared_library("libwebrtc") {
     "src/rtc_video_track_impl.cc",
     "src/rtc_video_track_impl.h",
     "src/rtc_logging.cc",
+    "src/rtc_lw_extra_impl.cc",
+    "src/rtc_lw_extra_impl.h",
   ]
 
   # intel media sdk
@@ -225,10 +228,12 @@ rtc_shared_library("libwebrtc") {
     "../api:libjingle_peerconnection_api",
     "../api/audio_codecs:builtin_audio_decoder_factory",
     "../api/audio_codecs:builtin_audio_encoder_factory",
+    "../api/audio_codecs:audio_codecs",
     "../api/crypto:frame_crypto_transformer",
     "../api/video:video_frame",
     "../api/video_codecs:builtin_video_decoder_factory",
     "../api/video_codecs:builtin_video_encoder_factory",
+    "../api/video_codecs:video_codecs",
     "../media:rtc_audio_video",
     "../media:rtc_internal_video_codecs",
     "../media:rtc_media",
@@ -239,6 +244,7 @@ rtc_shared_library("libwebrtc") {
     "../modules/video_capture:video_capture_module",
     "../pc:libjingle_peerconnection",
     "../rtc_base:threading",
+    "../rtc_base:rtc_base_approval",
     "../sdk:media_constraints",
     "//third_party/abseil-cpp/absl/memory",
     "//third_party/boringssl:boringssl",
