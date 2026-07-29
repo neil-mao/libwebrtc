@@ -541,7 +541,7 @@ lw_extra_RtpTransceiver* lw_extra_PeerConnectionImpl::GetTransceiverByMid(
   auto all_transceivers = peer_connection_->transceivers();
   auto std_transceivers = all_transceivers.std_vector();
   for (const auto& transceiver : std_transceivers) {
-    if (std::string(transceiver->mid().c_string()) == std::string(mid.c_string())) {
+    if (transceiver->mid().std_string() == mid.std_string()) {
       return CreateOrGetTransceiver(transceiver);
     }
   }
