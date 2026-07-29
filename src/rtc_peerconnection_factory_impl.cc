@@ -73,9 +73,17 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
   // 检查是否禁用音频
   bool audio_disabled = IsAudioDisabled();
 
-  if (!audio_device_module_ && !audio_disabled) {
+  if (!audio_device_module_) {
     task_queue_factory_ = webrtc::CreateDefaultTaskQueueFactory();
-    worker_thread_->BlockingCall([&] { CreateAudioDeviceModule_w(); });
+    if (audio_disabled) {
+      // 使用 kDummyAudio — 桩实现，不需要硬件，但给 WebRtcVoiceEngine 有效指针
+      worker_thread_->BlockingCall([&] {
+        audio_device_module_ = webrtc::CreateAudioDeviceModule(
+            env_, webrtc::AudioDeviceModule::kDummyAudio, false);
+      });
+    } else {
+      worker_thread_->BlockingCall([&] { CreateAudioDeviceModule_w(); });
+    }
   }
 
   // 音频处理 + transport 始终创建 (WebRtcVoiceEngine 不接受 nullptr)
