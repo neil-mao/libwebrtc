@@ -1,5 +1,7 @@
 #include "rtc_peerconnection_factory_impl.h"
 
+#include <cstdlib>
+
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/audio/create_audio_device_module.h"
@@ -26,6 +28,13 @@
 #include <api/task_queue/default_task_queue_factory.h>
 
 namespace libwebrtc {
+
+// 检查是否禁用音频设备初始化
+// 环境变量: LIBWEBRTC_DISABLE_AUDIO=1
+static bool IsAudioDisabled() {
+  const char* env = std::getenv("LIBWEBRTC_DISABLE_AUDIO");
+  return env != nullptr && (env[0] == '1' || env[0] == 'y' || env[0] == 'Y');
+}
 
 #if defined(USE_INTEL_MEDIA_SDK)
 std::unique_ptr<webrtc::VideoEncoderFactory> CreateIntelVideoEncoderFactory() {
@@ -60,18 +69,22 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
   network_thread_ = webrtc::Thread::CreateWithSocketServer();
   network_thread_->SetName("network_thread", nullptr);
   RTC_CHECK(network_thread_->Start()) << "Failed to start thread";
-  if (!audio_device_module_) {
+
+  // 检查是否禁用音频
+  bool audio_disabled = IsAudioDisabled();
+
+  if (!audio_device_module_ && !audio_disabled) {
     task_queue_factory_ = webrtc::CreateDefaultTaskQueueFactory();
     worker_thread_->BlockingCall([&] { CreateAudioDeviceModule_w(); });
   }
 
-  if (!audio_processing_impl_) {
+  if (!audio_processing_impl_ && !audio_disabled) {
     worker_thread_->BlockingCall([this] {
       audio_processing_impl_ = new RefCountedObject<RTCAudioProcessingImpl>();
     });
   }
 
-  if (!audio_transport_factory_) {
+  if (!audio_transport_factory_ && !audio_disabled) {
     worker_thread_->BlockingCall([this] {
       audio_transport_factory_ =
           webrtc::make_ref_counted<CustomAudioTransportFactory>();
@@ -81,16 +94,19 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
   if (!rtc_peerconnection_factory_) {
     rtc_peerconnection_factory_ = CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),
-        audio_device_module_, webrtc::CreateBuiltinAudioEncoderFactory(),
-        webrtc::CreateBuiltinAudioDecoderFactory(),
+        audio_device_module_,
+        audio_disabled ? nullptr : webrtc::CreateBuiltinAudioEncoderFactory(),
+        audio_disabled ? nullptr : webrtc::CreateBuiltinAudioDecoderFactory(),
 #if defined(USE_INTEL_MEDIA_SDK)
         CreateIntelVideoEncoderFactory(), CreateIntelVideoDecoderFactory(),
 #else
         webrtc::CreateBuiltinVideoEncoderFactory(),
         webrtc::CreateBuiltinVideoDecoderFactory(),
 #endif
-        nullptr, audio_processing_impl_->GetAudioProcessing(), nullptr, nullptr,
-        audio_transport_factory_);
+        nullptr,
+        audio_disabled ? nullptr : audio_processing_impl_->GetAudioProcessing(),
+        nullptr, nullptr,
+        audio_disabled ? nullptr : audio_transport_factory_);
   }
 
   if (!rtc_peerconnection_factory_.get()) {
@@ -158,6 +174,11 @@ void RTCPeerConnectionFactoryImpl::Delete(
 }
 
 scoped_refptr<RTCAudioDevice> RTCPeerConnectionFactoryImpl::GetAudioDevice() {
+  // 如果音频被禁用，返回 nullptr
+  if (IsAudioDisabled()) {
+    return nullptr;
+  }
+
   if (!audio_device_module_) {
     worker_thread_->BlockingCall([this] { CreateAudioDeviceModule_w(); });
   }
@@ -172,6 +193,11 @@ scoped_refptr<RTCAudioDevice> RTCPeerConnectionFactoryImpl::GetAudioDevice() {
 
 scoped_refptr<RTCAudioProcessing>
 RTCPeerConnectionFactoryImpl::GetAudioProcessing() {
+  // 如果音频被禁用，返回 nullptr
+  if (IsAudioDisabled()) {
+    return nullptr;
+  }
+
   if (!audio_processing_impl_) {
     worker_thread_->BlockingCall([this] {
       audio_processing_impl_ = new RefCountedObject<RTCAudioProcessingImpl>();
@@ -199,16 +225,19 @@ RTCPeerConnectionFactoryImpl::CreateAudioSourceWithOptions(
   // otherwise, use the default audio transport, audio transport will
   // put audio frame from your platform adm to your
   // LocalAudioSource::SendAudioData(...).
+  // 当音频被禁用时，audio_transport_factory_ 为 null，也视为 custom source
+  bool use_null_transport = is_custom_source || !audio_transport_factory_;
+
   if (webrtc::Thread::Current() != signaling_thread_.get()) {
-    return signaling_thread_->BlockingCall([this, options, is_custom_source] {
+    return signaling_thread_->BlockingCall([this, options, use_null_transport] {
       return libwebrtc::LocalAudioSource::Create(
-          options, is_custom_source
+          options, use_null_transport
                        ? nullptr
                        : audio_transport_factory_->audio_transport_impl());
     });
   }
   return libwebrtc::LocalAudioSource::Create(
-      options, is_custom_source
+      options, use_null_transport
                    ? nullptr
                    : audio_transport_factory_->audio_transport_impl());
 }
