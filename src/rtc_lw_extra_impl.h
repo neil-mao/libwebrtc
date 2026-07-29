@@ -344,7 +344,7 @@ class lw_extra_PeerConnectionImpl : public lw_extra_PeerConnection {
  *
  * 提供静态方法来创建和管理带有扩展功能的 PeerConnection
  */
-class lw_extra_Utils {
+class LIB_WEBRTC_API lw_extra_Utils {
  public:
   /**
    * @brief 创建带有扩展功能的 PeerConnection

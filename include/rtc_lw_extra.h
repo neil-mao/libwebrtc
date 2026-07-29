@@ -61,7 +61,7 @@ struct lw_extra_EncodedAudioFrame {
  * 用户可以通过继承此接口来接收编码后的视频帧（H264/AV1），
  * 而不是解码后的 RGBA/I420 图像。
  */
-class lw_extra_EncodedVideoSink {
+class LIB_WEBRTC_API lw_extra_EncodedVideoSink {
  public:
   virtual ~lw_extra_EncodedVideoSink() {}
 
@@ -79,7 +79,7 @@ class lw_extra_EncodedVideoSink {
  * 用户可以通过继承此接口来接收编码后的音频帧（Opus），
  * 而不是解码后的 PCM 音频数据。
  */
-class lw_extra_EncodedAudioSink {
+class LIB_WEBRTC_API lw_extra_EncodedAudioSink {
  public:
   virtual ~lw_extra_EncodedAudioSink() {}
 
@@ -105,7 +105,7 @@ class lw_extra_EncodedAudioSink {
  * 3. 通过 GetEncodedSender() 获取编码数据发送器
  * 4. 调用 SendEncodedVideoFrame() 或 SendEncodedAudioFrame() 发送数据
  */
-class lw_extra_EncodedSender {
+class LIB_WEBRTC_API lw_extra_EncodedSender {
  public:
   virtual ~lw_extra_EncodedSender() {}
 
@@ -155,7 +155,7 @@ class lw_extra_EncodedSender {
  * 4. 注册编码数据接收回调
  * 5. 当有编码数据到达时，回调函数会被触发
  */
-class lw_extra_EncodedReceiver {
+class LIB_WEBRTC_API lw_extra_EncodedReceiver {
  public:
   virtual ~lw_extra_EncodedReceiver() {}
 
@@ -195,7 +195,7 @@ class lw_extra_EncodedReceiver {
  *
  * 提供获取编码数据发送器和接收器的方法
  */
-class lw_extra_RtpTransceiver {
+class LIB_WEBRTC_API lw_extra_RtpTransceiver {
  public:
   virtual ~lw_extra_RtpTransceiver() {}
 
@@ -228,7 +228,7 @@ class lw_extra_RtpTransceiver {
  *
  * 在 RTCPeerConnection 基础上扩展，支持编码数据的收发功能
  */
-class lw_extra_PeerConnection {
+class LIB_WEBRTC_API lw_extra_PeerConnection {
  public:
   virtual ~lw_extra_PeerConnection() {}
 
