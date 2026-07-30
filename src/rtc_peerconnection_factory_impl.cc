@@ -112,6 +112,15 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
           passthrough_video_encoder_factory_.get());
     }
 
+    // 如果启用了 passthrough 音频编码模式，创建 PassthroughAudioEncoderFactory
+    if (use_passthrough_audio_encoder_ && !passthrough_audio_encoder_factory_) {
+      passthrough_audio_encoder_factory_ =
+          new lw_extra_PassthroughAudioEncoderFactory();
+      // 注入到 lw_extra_Utils，使 CreateExtendedPeerConnection 复用同一工厂
+      lw_extra_Utils::SetExternalAudioEncoderFactory(
+          passthrough_audio_encoder_factory_);
+    }
+
     // 视频编码器工厂：passthrough 模式使用自定义工厂，否则使用内置工厂。
     // 将 unique_ptr 所有权转移给 CreatePeerConnectionFactory（WebRTC 内部管理生命周期）。
     std::unique_ptr<webrtc::VideoEncoderFactory> video_encoder_factory;
@@ -127,10 +136,19 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
 #endif
     }
 
+    // 音频编码器工厂：passthrough 模式使用自定义工厂，否则使用内置工厂。
+    // PassthroughAudioEncoderFactory 通过 scoped_refptr 管理生命周期（refcounted）。
+    rtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory;
+    if (use_passthrough_audio_encoder_ && passthrough_audio_encoder_factory_) {
+      audio_encoder_factory = passthrough_audio_encoder_factory_;
+    } else {
+      audio_encoder_factory = webrtc::CreateBuiltinAudioEncoderFactory();
+    }
+
     rtc_peerconnection_factory_ = CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),
         audio_device_module_,
-        webrtc::CreateBuiltinAudioEncoderFactory(),
+        audio_encoder_factory,
         webrtc::CreateBuiltinAudioDecoderFactory(),
         std::move(video_encoder_factory),
 #if defined(USE_INTEL_MEDIA_SDK)
@@ -158,6 +176,9 @@ bool RTCPeerConnectionFactoryImpl::Terminate() {
     video_device_impl_ = nullptr;
     audio_processing_impl_ = nullptr;
   });
+  // 清除外部工厂指针，避免 rtc_peerconnection_factory_ 销毁后悬挂
+  lw_extra_Utils::SetExternalAudioEncoderFactory(nullptr);
+  passthrough_audio_encoder_factory_ = nullptr;
   rtc_peerconnection_factory_ = NULL;
   if (audio_device_module_) {
     worker_thread_->BlockingCall([this] { DestroyAudioDeviceModule_w(); });
@@ -493,6 +514,10 @@ RTCPeerConnectionFactoryImpl::GetRtpReceiverCapabilities(
 
 void RTCPeerConnectionFactoryImpl::SetUsePassthroughVideoEncoder(bool enabled) {
   use_passthrough_video_encoder_ = enabled;
+}
+
+void RTCPeerConnectionFactoryImpl::SetUsePassthroughAudioEncoder(bool enabled) {
+  use_passthrough_audio_encoder_ = enabled;
 }
 
 }  // namespace libwebrtc

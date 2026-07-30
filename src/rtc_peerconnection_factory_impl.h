@@ -89,6 +89,8 @@ class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
 
   void SetUsePassthroughVideoEncoder(bool enabled) override;
 
+  void SetUsePassthroughAudioEncoder(bool enabled) override;
+
   webrtc::Thread* signaling_thread() { return signaling_thread_.get(); }
 
   /**
@@ -140,6 +142,9 @@ class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
   std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
       passthrough_video_encoder_factory_;
   std::unique_ptr<webrtc::VideoEncoderFactory> builtin_video_encoder_factory_;
+  bool use_passthrough_audio_encoder_ = false;
+  lw_extra_PassthroughAudioEncoderFactory*
+      passthrough_audio_encoder_factory_ = nullptr;
 };
 
 }  // namespace libwebrtc

@@ -159,14 +159,18 @@ class lw_extra_PassthroughVideoEncoderFactory
       const webrtc::SdpVideoFormat& format) override;
 
   /**
-   * @brief 获取最后创建的编码器
+   * @brief 按创建顺序获取下一个编码器（FIFO，支持多通道）
    *
-   * @return 编码器指针
+   * 每次 Create() 将编码器入队，GetNextEncoder() 按 FIFO 出队。
+   * 这确保多通道场景下每个 transceiver 拿到对应的编码器。
+   *
+   * @return 编码器指针，队列为空时返回 nullptr
    */
-  lw_extra_PassthroughVideoEncoder* GetLastEncoder();
+  lw_extra_PassthroughVideoEncoder* GetNextEncoder();
 
  private:
-  lw_extra_PassthroughVideoEncoder* last_encoder_ = nullptr;
+  std::vector<lw_extra_PassthroughVideoEncoder*> encoder_queue_;
+  size_t next_encoder_index_ = 0;
 };
 
 // ==================== 音频编码器工厂 ====================
@@ -199,14 +203,15 @@ class lw_extra_PassthroughAudioEncoderFactory
       webrtc::AudioEncoderFactory::Options options) override;
 
   /**
-   * @brief 获取最后创建的编码器
+   * @brief 按创建顺序获取下一个编码器（FIFO，支持多通道）
    *
-   * @return 编码器指针
+   * @return 编码器指针，队列为空时返回 nullptr
    */
-  lw_extra_PassthroughAudioEncoder* GetLastEncoder();
+  lw_extra_PassthroughAudioEncoder* GetNextEncoder();
 
  private:
-  lw_extra_PassthroughAudioEncoder* last_encoder_ = nullptr;
+  std::vector<lw_extra_PassthroughAudioEncoder*> encoder_queue_;
+  size_t next_encoder_index_ = 0;
   mutable int ref_count_ = 0;
 };
 
@@ -391,11 +396,24 @@ class LIB_WEBRTC_API lw_extra_Utils {
   static void SetExternalVideoEncoderFactory(
       lw_extra_PassthroughVideoEncoderFactory* factory);
 
+  /**
+   * @brief 设置外部 Passthrough 音频编码器工厂
+   *
+   * 由 RTCPeerConnectionFactoryImpl 在 Initialize() 时调用，
+   * 使 lw_extra_Utils 复用由 WebRTC 管理的工厂实例。
+   *
+   * @param factory 工厂指针，设为 nullptr 时清除
+   */
+  static void SetExternalAudioEncoderFactory(
+      lw_extra_PassthroughAudioEncoderFactory* factory);
+
  private:
   static std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
       video_encoder_factory_;
   static lw_extra_PassthroughVideoEncoderFactory*
       external_video_encoder_factory_;
+  static lw_extra_PassthroughAudioEncoderFactory*
+      external_audio_encoder_factory_;
   static lw_extra_PassthroughAudioEncoderFactory*
       audio_encoder_factory_;
 };

@@ -17,6 +17,8 @@ std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
 lw_extra_PassthroughVideoEncoderFactory*
     lw_extra_Utils::external_video_encoder_factory_ = nullptr;
 lw_extra_PassthroughAudioEncoderFactory*
+    lw_extra_Utils::external_audio_encoder_factory_ = nullptr;
+lw_extra_PassthroughAudioEncoderFactory*
     lw_extra_Utils::audio_encoder_factory_ = nullptr;
 
 // ==================== PassthroughVideoEncoder ====================
@@ -221,8 +223,7 @@ bool lw_extra_PassthroughAudioEncoder::SendEncodedFrame(
 // ==================== PassthroughVideoEncoderFactory ====================
 
 lw_extra_PassthroughVideoEncoderFactory::
-    lw_extra_PassthroughVideoEncoderFactory()
-    : last_encoder_(nullptr) {}
+    lw_extra_PassthroughVideoEncoderFactory() {}
 
 lw_extra_PassthroughVideoEncoderFactory::
     ~lw_extra_PassthroughVideoEncoderFactory() {}
@@ -250,20 +251,20 @@ std::unique_ptr<webrtc::VideoEncoder>
 lw_extra_PassthroughVideoEncoderFactory::Create(
     const webrtc::Environment& env, const webrtc::SdpVideoFormat& format) {
   auto encoder = std::make_unique<lw_extra_PassthroughVideoEncoder>();
-  last_encoder_ = encoder.get();
+  encoder_queue_.push_back(encoder.get());
   return encoder;
 }
 
 lw_extra_PassthroughVideoEncoder*
-lw_extra_PassthroughVideoEncoderFactory::GetLastEncoder() {
-  return last_encoder_;
+lw_extra_PassthroughVideoEncoderFactory::GetNextEncoder() {
+  if (next_encoder_index_ >= encoder_queue_.size()) return nullptr;
+  return encoder_queue_[next_encoder_index_++];
 }
 
 // ==================== PassthroughAudioEncoderFactory ====================
 
 lw_extra_PassthroughAudioEncoderFactory::
-    lw_extra_PassthroughAudioEncoderFactory()
-    : last_encoder_(nullptr) {}
+    lw_extra_PassthroughAudioEncoderFactory() {}
 
 lw_extra_PassthroughAudioEncoderFactory::
     ~lw_extra_PassthroughAudioEncoderFactory() {}
@@ -299,13 +300,14 @@ lw_extra_PassthroughAudioEncoderFactory::Create(
     webrtc::AudioEncoderFactory::Options options) {
   auto encoder =
       std::make_unique<lw_extra_PassthroughAudioEncoder>(options.payload_type);
-  last_encoder_ = encoder.get();
+  encoder_queue_.push_back(encoder.get());
   return encoder;
 }
 
 lw_extra_PassthroughAudioEncoder*
-lw_extra_PassthroughAudioEncoderFactory::GetLastEncoder() {
-  return last_encoder_;
+lw_extra_PassthroughAudioEncoderFactory::GetNextEncoder() {
+  if (next_encoder_index_ >= encoder_queue_.size()) return nullptr;
+  return encoder_queue_[next_encoder_index_++];
 }
 
 // ==================== EncodedSenderImpl ====================
@@ -449,9 +451,9 @@ void lw_extra_RtpTransceiverImpl::EnsureInitialized() {
   lw_extra_PassthroughAudioEncoder* audio_encoder = nullptr;
 
   if (media_type == RTCMediaType::VIDEO && video_factory_) {
-    video_encoder = video_factory_->GetLastEncoder();
+    video_encoder = video_factory_->GetNextEncoder();
   } else if (media_type == RTCMediaType::AUDIO && audio_factory_) {
-    audio_encoder = audio_factory_->GetLastEncoder();
+    audio_encoder = audio_factory_->GetNextEncoder();
   }
 
   // 创建发送器
@@ -590,14 +592,19 @@ lw_extra_Utils::CreateExtendedPeerConnection(
     video_factory = video_encoder_factory_.get();
   }
 
-  if (!audio_encoder_factory_) {
-    audio_encoder_factory_ =
-        new lw_extra_PassthroughAudioEncoderFactory();
+  // 优先使用外部音频工厂
+  auto* audio_factory = external_audio_encoder_factory_;
+  if (!audio_factory) {
+    if (!audio_encoder_factory_) {
+      audio_encoder_factory_ =
+          new lw_extra_PassthroughAudioEncoderFactory();
+    }
+    audio_factory = audio_encoder_factory_;
   }
 
   auto* impl = new lw_extra_PeerConnectionImpl(
       peer_connection, video_factory,
-      audio_encoder_factory_);
+      audio_factory);
   return impl;
 }
 
@@ -646,8 +653,16 @@ void lw_extra_Utils::SetExternalVideoEncoderFactory(
   external_video_encoder_factory_ = factory;
 }
 
+void lw_extra_Utils::SetExternalAudioEncoderFactory(
+    lw_extra_PassthroughAudioEncoderFactory* factory) {
+  external_audio_encoder_factory_ = factory;
+}
+
 lw_extra_PassthroughAudioEncoderFactory*
 lw_extra_Utils::GetAudioEncoderFactory() {
+  if (external_audio_encoder_factory_) {
+    return external_audio_encoder_factory_;
+  }
   if (!audio_encoder_factory_) {
     audio_encoder_factory_ =
         new lw_extra_PassthroughAudioEncoderFactory();
