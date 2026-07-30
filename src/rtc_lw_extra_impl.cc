@@ -456,7 +456,7 @@ void lw_extra_RtpTransceiverImpl::EnsureInitialized() {
     audio_encoder = audio_factory_->GetNextEncoder();
   }
 
-  // 创建发送器
+  // 创建发送器 (encoder 可能尚未创建，此时传 nullptr)
   if (rtp_sender) {
     encoded_sender_ = std::make_unique<lw_extra_EncodedSenderImpl>(
         rtp_sender, video_encoder, audio_encoder);
@@ -468,7 +468,13 @@ void lw_extra_RtpTransceiverImpl::EnsureInitialized() {
         std::make_unique<lw_extra_EncodedReceiverImpl>(rtp_receiver);
   }
 
-  initialized_ = true;
+  // 仅当发送端拿到有效 encoder 或接收端已就绪时才标记初始化完成。
+  // 若 encoder 尚未创建 (video_encoder/audio_encoder 为空), 允许后续重试。
+  bool sender_ready = !rtp_sender || video_encoder || audio_encoder;
+  bool receiver_ready = rtp_receiver != nullptr;
+  if (sender_ready || receiver_ready) {
+    initialized_ = true;
+  }
 }
 
 lw_extra_EncodedSender* lw_extra_RtpTransceiverImpl::GetEncodedSender() {
