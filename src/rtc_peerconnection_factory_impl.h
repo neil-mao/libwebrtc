@@ -26,6 +26,7 @@
 namespace libwebrtc {
 
 class lw_extra_PassthroughVideoEncoderFactory;
+class lw_extra_PassthroughAudioEncoderFactory;
 
 class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
  public:

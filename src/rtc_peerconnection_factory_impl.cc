@@ -138,7 +138,7 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
 
     // 音频编码器工厂：passthrough 模式使用自定义工厂，否则使用内置工厂。
     // PassthroughAudioEncoderFactory 通过 scoped_refptr 管理生命周期（refcounted）。
-    rtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory;
+    webrtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory;
     if (use_passthrough_audio_encoder_ && passthrough_audio_encoder_factory_) {
       audio_encoder_factory = passthrough_audio_encoder_factory_;
     } else {
