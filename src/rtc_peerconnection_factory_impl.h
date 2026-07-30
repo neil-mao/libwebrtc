@@ -139,6 +139,7 @@ class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
   bool use_passthrough_video_encoder_ = false;
   std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
       passthrough_video_encoder_factory_;
+  std::unique_ptr<webrtc::VideoEncoderFactory> builtin_video_encoder_factory_;
 };
 
 }  // namespace libwebrtc

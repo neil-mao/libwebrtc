@@ -112,19 +112,26 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
           passthrough_video_encoder_factory_.get());
     }
 
+    // 视频编码器工厂：passthrough 模式使用自定义工厂，否则使用内置工厂。
+    // 必须存储 unique_ptr 为成员，确保裸指针在 CreatePeerConnectionFactory 调用期间有效。
+    webrtc::VideoEncoderFactory* video_encoder_factory = nullptr;
+    if (use_passthrough_video_encoder_) {
+      video_encoder_factory = passthrough_video_encoder_factory_.get();
+    } else {
+#if defined(USE_INTEL_MEDIA_SDK)
+      builtin_video_encoder_factory_ = CreateIntelVideoEncoderFactory();
+#else
+      builtin_video_encoder_factory_ = webrtc::CreateBuiltinVideoEncoderFactory();
+#endif
+      video_encoder_factory = builtin_video_encoder_factory_.get();
+    }
+
     rtc_peerconnection_factory_ = CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),
         audio_device_module_,
         webrtc::CreateBuiltinAudioEncoderFactory(),
         webrtc::CreateBuiltinAudioDecoderFactory(),
-        use_passthrough_video_encoder_
-            ? static_cast<webrtc::VideoEncoderFactory*>(
-                  passthrough_video_encoder_factory_.get())
-#if defined(USE_INTEL_MEDIA_SDK)
-            : CreateIntelVideoEncoderFactory(),
-#else
-            : webrtc::CreateBuiltinVideoEncoderFactory(),
-#endif
+        video_encoder_factory,
 #if defined(USE_INTEL_MEDIA_SDK)
         CreateIntelVideoDecoderFactory(),
 #else
