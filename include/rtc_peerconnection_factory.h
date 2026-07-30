@@ -73,6 +73,17 @@ class RTCPeerConnectionFactory : public RefCountInterface {
 
   virtual scoped_refptr<RTCRtpCapabilities> GetRtpReceiverCapabilities(
       RTCMediaType media_type) = 0;
+
+  /**
+   * @brief 设置是否使用 Passthrough 视频编码器
+   *
+   * 启用后，Initialize() 将使用 PassthroughVideoEncoderFactory
+   * 替代内置编码器工厂，允许直接发送预编码的 H264 数据。
+   * 必须在 Initialize() 之前调用。
+   *
+   * @param enabled true 使用 passthrough 编码器
+   */
+  virtual void SetUsePassthroughVideoEncoder(bool enabled) = 0;
 };
 
 }  // namespace libwebrtc

@@ -14,6 +14,8 @@ namespace libwebrtc {
 
 std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
     lw_extra_Utils::video_encoder_factory_ = nullptr;
+lw_extra_PassthroughVideoEncoderFactory*
+    lw_extra_Utils::external_video_encoder_factory_ = nullptr;
 lw_extra_PassthroughAudioEncoderFactory*
     lw_extra_Utils::audio_encoder_factory_ = nullptr;
 
@@ -578,17 +580,23 @@ lw_extra_Utils::CreateExtendedPeerConnection(
   }
 
   // 确保工厂已创建
-  if (!video_encoder_factory_) {
-    video_encoder_factory_ =
-        std::make_unique<lw_extra_PassthroughVideoEncoderFactory>();
+  // 优先使用外部工厂（由 RTCPeerConnectionFactoryImpl 注入）
+  auto* video_factory = external_video_encoder_factory_;
+  if (!video_factory) {
+    if (!video_encoder_factory_) {
+      video_encoder_factory_ =
+          std::make_unique<lw_extra_PassthroughVideoEncoderFactory>();
+    }
+    video_factory = video_encoder_factory_.get();
   }
+
   if (!audio_encoder_factory_) {
     audio_encoder_factory_ =
         new lw_extra_PassthroughAudioEncoderFactory();
   }
 
   auto* impl = new lw_extra_PeerConnectionImpl(
-      peer_connection, video_encoder_factory_.get(),
+      peer_connection, video_factory,
       audio_encoder_factory_);
   return impl;
 }
@@ -623,11 +631,19 @@ bool lw_extra_Utils::SetUdpPortRange(
 
 lw_extra_PassthroughVideoEncoderFactory*
 lw_extra_Utils::GetVideoEncoderFactory() {
+  if (external_video_encoder_factory_) {
+    return external_video_encoder_factory_;
+  }
   if (!video_encoder_factory_) {
     video_encoder_factory_ =
         std::make_unique<lw_extra_PassthroughVideoEncoderFactory>();
   }
   return video_encoder_factory_.get();
+}
+
+void lw_extra_Utils::SetExternalVideoEncoderFactory(
+    lw_extra_PassthroughVideoEncoderFactory* factory) {
+  external_video_encoder_factory_ = factory;
 }
 
 lw_extra_PassthroughAudioEncoderFactory*

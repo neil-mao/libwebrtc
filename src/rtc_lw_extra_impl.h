@@ -380,9 +380,22 @@ class LIB_WEBRTC_API lw_extra_Utils {
    */
   static lw_extra_PassthroughAudioEncoderFactory* GetAudioEncoderFactory();
 
+  /**
+   * @brief 设置外部 Passthrough 视频编码器工厂
+   *
+   * 由 RTCPeerConnectionFactoryImpl 在 Initialize() 时调用，
+   * 使 lw_extra_Utils 复用同一个工厂实例。
+   *
+   * @param factory 工厂指针，设为 nullptr 时清除
+   */
+  static void SetExternalVideoEncoderFactory(
+      lw_extra_PassthroughVideoEncoderFactory* factory);
+
  private:
   static std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
       video_encoder_factory_;
+  static lw_extra_PassthroughVideoEncoderFactory*
+      external_video_encoder_factory_;
   static lw_extra_PassthroughAudioEncoderFactory*
       audio_encoder_factory_;
 };

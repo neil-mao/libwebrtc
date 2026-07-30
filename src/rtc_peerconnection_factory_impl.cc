@@ -2,6 +2,8 @@
 
 #include <cstdlib>
 
+#include "rtc_lw_extra_impl.h"
+
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/audio/create_audio_device_module.h"
@@ -101,15 +103,31 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
   }
 
   if (!rtc_peerconnection_factory_) {
+    // 如果启用了 passthrough 视频编码模式，创建 PassthroughVideoEncoderFactory
+    if (use_passthrough_video_encoder_ && !passthrough_video_encoder_factory_) {
+      passthrough_video_encoder_factory_ =
+          std::make_unique<lw_extra_PassthroughVideoEncoderFactory>();
+      // 注入到 lw_extra_Utils，使 CreateExtendedPeerConnection 复用同一工厂
+      lw_extra_Utils::SetExternalVideoEncoderFactory(
+          passthrough_video_encoder_factory_.get());
+    }
+
     rtc_peerconnection_factory_ = CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),
         audio_device_module_,
         webrtc::CreateBuiltinAudioEncoderFactory(),
         webrtc::CreateBuiltinAudioDecoderFactory(),
+        use_passthrough_video_encoder_
+            ? static_cast<webrtc::VideoEncoderFactory*>(
+                  passthrough_video_encoder_factory_.get())
 #if defined(USE_INTEL_MEDIA_SDK)
-        CreateIntelVideoEncoderFactory(), CreateIntelVideoDecoderFactory(),
+            : CreateIntelVideoEncoderFactory(),
 #else
-        webrtc::CreateBuiltinVideoEncoderFactory(),
+            : webrtc::CreateBuiltinVideoEncoderFactory(),
+#endif
+#if defined(USE_INTEL_MEDIA_SDK)
+        CreateIntelVideoDecoderFactory(),
+#else
         webrtc::CreateBuiltinVideoDecoderFactory(),
 #endif
         nullptr,
@@ -463,6 +481,10 @@ RTCPeerConnectionFactoryImpl::GetRtpReceiverCapabilities(
       rtc_peerconnection_factory_->GetRtpReceiverCapabilities(type);
   return scoped_refptr<RTCRtpCapabilities>(
       new RefCountedObject<RTCRtpCapabilitiesImpl>(rtp_capabilities));
+}
+
+void RTCPeerConnectionFactoryImpl::SetUsePassthroughVideoEncoder(bool enabled) {
+  use_passthrough_video_encoder_ = enabled;
 }
 
 }  // namespace libwebrtc
