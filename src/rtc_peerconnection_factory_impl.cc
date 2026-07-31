@@ -138,8 +138,8 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
         webrtc::CreateBuiltinAudioEncoderFactory(),
         passthrough_audio_factory);
     lw_extra_Utils::SetRoutingAudioEncoderFactory(routing_audio_encoder_factory_);
-    webrtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory =
-        routing_audio_encoder_factory_;
+    webrtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory(
+        routing_audio_encoder_factory_);
 
     rtc_peerconnection_factory_ = CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),

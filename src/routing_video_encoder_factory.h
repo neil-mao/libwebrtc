@@ -88,13 +88,9 @@ class RoutingAudioEncoderFactory : public webrtc::AudioEncoderFactory {
   RoutingAudioEncoderFactory(
       webrtc::scoped_refptr<webrtc::AudioEncoderFactory> builtin,
       lw_extra_PassthroughAudioEncoderFactory* passthrough)
-      : builtin_(builtin), passthrough_(passthrough) {
-    if (builtin_) builtin_->AddRef();
-  }
+      : builtin_(builtin), passthrough_(passthrough) {}
 
-  ~RoutingAudioEncoderFactory() override {
-    if (builtin_) builtin_->Release();
-  }
+  ~RoutingAudioEncoderFactory() override = default;
 
   // RefCountInterface
   void AddRef() const override { ref_count_++; }
