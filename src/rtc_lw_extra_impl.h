@@ -19,6 +19,7 @@
 #include "api/video/video_frame_type.h"
 #include "api/video/encoded_image.h"
 #include "api/video/video_codec_type.h"
+#include "api/frame_transformer_interface.h"
 #include "rtc_base/synchronization/mutex.h"
 #include "rtc_lw_extra.h"
 #include "rtc_rtp_transceiver.h"
@@ -32,6 +33,51 @@
 #include "rtc_types.h"
 
 namespace libwebrtc {
+
+// 前向声明
+class lw_extra_EncodedReceiverImpl;
+
+// ==================== Frame Transformer（接收侧编码帧拦截）====================
+
+/**
+ * @brief 透传 Frame Transformer — 在 depacketizer 和 decoder 之间拦截编码帧
+ *
+ * 通过 RtpReceiverInterface::SetDepacketizerToDecoderFrameTransformer() 注册。
+ * Transform() 中提取编码数据 → OnEncodedVideoFrameReceived/AudioReceived，
+ * 然后原样传回 TransformedFrameCallback，解码管道继续运行（不影响 RGBA 通道）。
+ */
+class PassthroughFrameTransformer : public webrtc::FrameTransformerInterface {
+ public:
+  explicit PassthroughFrameTransformer(lw_extra_EncodedReceiverImpl* receiver);
+  ~PassthroughFrameTransformer() override = default;
+
+  // FrameTransformerInterface
+  void Transform(
+      std::unique_ptr<webrtc::TransformableFrameInterface> frame) override;
+
+  void RegisterTransformedFrameCallback(
+      scoped_refptr<webrtc::TransformedFrameCallback> callback) override;
+  void RegisterTransformedFrameSinkCallback(
+      scoped_refptr<webrtc::TransformedFrameCallback> callback,
+      uint32_t ssrc) override;
+  void UnregisterTransformedFrameCallback() override;
+  void UnregisterTransformedFrameSinkCallback(uint32_t ssrc) override;
+
+  // RefCountInterface
+  void AddRef() const override { ref_count_++; }
+  webrtc::RefCountReleaseStatus Release() const override {
+    if (--ref_count_ == 0) {
+      delete this;
+      return webrtc::RefCountReleaseStatus::kDroppedLastRef;
+    }
+    return webrtc::RefCountReleaseStatus::kOtherRefsRemained;
+  }
+
+ private:
+  lw_extra_EncodedReceiverImpl* receiver_;
+  scoped_refptr<webrtc::TransformedFrameCallback> callback_;
+  mutable std::atomic<int> ref_count_{0};
+};
 
 // ==================== 自定义视频编码器 ====================
 
@@ -248,6 +294,10 @@ class lw_extra_EncodedSenderImpl : public lw_extra_EncodedSender {
 
 /**
  * @brief 编码数据接收器实现类
+ *
+ * 通过 PassthroughFrameTransformer 接入 WebRTC 的 RTP 接收管线。
+ * SetVideoEncodedReceive(true) 时自动注册 frame transformer 到
+ * RtpReceiverInterface::SetDepacketizerToDecoderFrameTransformer。
  */
 class lw_extra_EncodedReceiverImpl : public lw_extra_EncodedReceiver {
  public:
@@ -263,23 +313,29 @@ class lw_extra_EncodedReceiverImpl : public lw_extra_EncodedReceiver {
 
   void SetAudioEncodedReceive(bool enabled) override;
 
-  // 内部方法：处理接收到的编码视频帧
+  // 内部方法：处理接收到的编码视频帧（由 PassthroughFrameTransformer 调用）
   void OnEncodedVideoFrameReceived(const uint8_t* data, size_t size,
                                     uint32_t timestamp, bool is_key_frame,
                                     int width, int height,
                                     lw_extra_VideoCodec codec);
 
-  // 内部方法：处理接收到的编码音频帧
+  // 内部方法：处理接收到的编码音频帧（由 PassthroughFrameTransformer 调用）
   void OnEncodedAudioFrameReceived(const uint8_t* data, size_t size,
                                     uint32_t timestamp,
                                     lw_extra_AudioCodec codec);
 
  private:
+  friend class PassthroughFrameTransformer;
+
+  bool video_enabled() const { return video_enabled_; }
+  bool audio_enabled() const { return audio_enabled_; }
+
   scoped_refptr<RTCRtpReceiver> rtp_receiver_;
   lw_extra_EncodedVideoSink* video_sink_ = nullptr;
   lw_extra_EncodedAudioSink* audio_sink_ = nullptr;
   bool video_enabled_ = false;
   bool audio_enabled_ = false;
+  scoped_refptr<webrtc::FrameTransformerInterface> frame_transformer_;
 };
 
 // ==================== 扩展 RTP Transceiver 实现 ====================

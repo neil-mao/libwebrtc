@@ -10,8 +10,124 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/synchronization/mutex.h"
 #include "routing_video_encoder_factory.h"
+#include "rtc_rtp_receiver_impl.h"
 
 namespace libwebrtc {
+
+// ==================== PassthroughFrameTransformer ====================
+
+PassthroughFrameTransformer::PassthroughFrameTransformer(
+    lw_extra_EncodedReceiverImpl* receiver)
+    : receiver_(receiver) {}
+
+void PassthroughFrameTransformer::Transform(
+    std::unique_ptr<webrtc::TransformableFrameInterface> frame) {
+  if (!frame || frame->GetDirection() !=
+                    webrtc::TransformableFrameInterface::Direction::kReceiver) {
+    // 非接收方向或空帧，直接传回
+    if (frame && callback_) {
+      callback_->OnTransformedFrame(std::move(frame));
+    }
+    return;
+  }
+
+  // 尝试视频帧
+  auto* video_frame =
+      dynamic_cast<webrtc::TransformableVideoFrameInterface*>(frame.get());
+  if (video_frame && receiver_->video_enabled() && receiver_->video_sink_) {
+    auto data = video_frame->GetData();
+    const auto& header = video_frame->header();
+
+    // 从 RTPVideoHeader 提取 codec
+    lw_extra_VideoCodec codec;
+    switch (header.codec) {
+      case webrtc::kVideoCodecH264:
+        codec = lw_extra_VideoCodec::kH264;
+        break;
+      case webrtc::kVideoCodecAV1:
+        codec = lw_extra_VideoCodec::kAV1;
+        break;
+      default:
+        // 未知 codec，尝试从 MIME type 判断
+        {
+          auto mime = video_frame->GetMimeType();
+          if (mime.find("H264") != std::string::npos ||
+              mime.find("h264") != std::string::npos) {
+            codec = lw_extra_VideoCodec::kH264;
+          } else if (mime.find("AV1") != std::string::npos ||
+                     mime.find("av1") != std::string::npos) {
+            codec = lw_extra_VideoCodec::kAV1;
+          } else {
+            codec = lw_extra_VideoCodec::kH264;  // fallback
+          }
+        }
+        break;
+    }
+
+    static int rx_count = 0;
+    rx_count++;
+    if (rx_count <= 5 || rx_count % 30 == 0)
+      fprintf(stderr,
+          "[lw_extra] PassthroughFrameTransformer::Transform video #%d: "
+          "%dx%d %zuB key=%d codec=%d ts=%u\n",
+          rx_count, header.width, header.height, data.size(),
+          video_frame->IsKeyFrame() ? 1 : 0, (int)codec,
+          video_frame->GetTimestamp());
+
+    receiver_->OnEncodedVideoFrameReceived(
+        data.data(), data.size(),
+        video_frame->GetTimestamp(),
+        video_frame->IsKeyFrame(),
+        header.width, header.height, codec);
+  }
+
+  // 尝试音频帧
+  auto* audio_frame =
+      dynamic_cast<webrtc::TransformableAudioFrameInterface*>(frame.get());
+  if (audio_frame && receiver_->audio_enabled() && receiver_->audio_sink_) {
+    auto data = audio_frame->GetData();
+
+    // 从 MIME type 判断 codec
+    lw_extra_AudioCodec codec = lw_extra_AudioCodec::kOpus;  // default
+
+    static int rx_audio_count = 0;
+    rx_audio_count++;
+    if (rx_audio_count <= 5 || rx_audio_count % 50 == 0)
+      fprintf(stderr,
+          "[lw_extra] PassthroughFrameTransformer::Transform audio #%d: "
+          "%zuB ts=%u\n",
+          rx_audio_count, data.size(), audio_frame->GetTimestamp());
+
+    receiver_->OnEncodedAudioFrameReceived(
+        data.data(), data.size(),
+        audio_frame->GetTimestamp(), codec);
+  }
+
+  // 原样传回，解码管道继续运行
+  if (callback_) {
+    callback_->OnTransformedFrame(std::move(frame));
+  }
+}
+
+void PassthroughFrameTransformer::RegisterTransformedFrameCallback(
+    scoped_refptr<webrtc::TransformedFrameCallback> callback) {
+  callback_ = callback;
+}
+
+void PassthroughFrameTransformer::RegisterTransformedFrameSinkCallback(
+    scoped_refptr<webrtc::TransformedFrameCallback> callback,
+    uint32_t ssrc) {
+  callback_ = callback;
+}
+
+void PassthroughFrameTransformer::UnregisterTransformedFrameCallback() {
+  callback_ = nullptr;
+}
+
+void PassthroughFrameTransformer::UnregisterTransformedFrameSinkCallback(
+    uint32_t ssrc) {
+  callback_ = nullptr;
+}
 
 // ==================== 静态成员定义 ====================
 
@@ -419,10 +535,43 @@ void lw_extra_EncodedReceiverImpl::SetEncodedAudioSink(
 
 void lw_extra_EncodedReceiverImpl::SetVideoEncodedReceive(bool enabled) {
   video_enabled_ = enabled;
+
+  // 获取原生 RtpReceiverInterface 以注册/取消 frame transformer
+  auto* receiver_impl =
+      static_cast<RTCRtpReceiverImpl*>(rtp_receiver_.get());
+  auto native = receiver_impl->rtp_receiver();
+
+  if (enabled) {
+    if (!frame_transformer_) {
+      frame_transformer_ =
+          new PassthroughFrameTransformer(this);
+    }
+    native->SetDepacketizerToDecoderFrameTransformer(frame_transformer_);
+    fprintf(stderr, "[lw_extra] EncodedReceiver: video frame transformer REGISTERED\n");
+  } else {
+    native->SetDepacketizerToDecoderFrameTransformer(nullptr);
+    fprintf(stderr, "[lw_extra] EncodedReceiver: video frame transformer UNREGISTERED\n");
+  }
 }
 
 void lw_extra_EncodedReceiverImpl::SetAudioEncodedReceive(bool enabled) {
   audio_enabled_ = enabled;
+
+  auto* receiver_impl =
+      static_cast<RTCRtpReceiverImpl*>(rtp_receiver_.get());
+  auto native = receiver_impl->rtp_receiver();
+
+  if (enabled) {
+    if (!frame_transformer_) {
+      frame_transformer_ =
+          new PassthroughFrameTransformer(this);
+    }
+    native->SetDepacketizerToDecoderFrameTransformer(frame_transformer_);
+    fprintf(stderr, "[lw_extra] EncodedReceiver: audio frame transformer REGISTERED\n");
+  } else {
+    native->SetDepacketizerToDecoderFrameTransformer(nullptr);
+    fprintf(stderr, "[lw_extra] EncodedReceiver: audio frame transformer UNREGISTERED\n");
+  }
 }
 
 void lw_extra_EncodedReceiverImpl::OnEncodedVideoFrameReceived(
