@@ -407,6 +407,16 @@ class LIB_WEBRTC_API lw_extra_Utils {
   static void SetExternalAudioEncoderFactory(
       lw_extra_PassthroughAudioEncoderFactory* factory);
 
+  // ── 路由工厂标记 ──────────────────────────────────────────
+  // 由 RTCPeerConnectionFactoryImpl::Initialize() 注入，
+  // 桥接层通过 lw_set_next_encoder_passthrough() 间接调用。
+
+  static void SetNextVideoEncoderPassthrough(bool enabled);
+  static void SetNextAudioEncoderPassthrough(bool enabled);
+
+  static void SetRoutingVideoEncoderFactory(void* factory);
+  static void SetRoutingAudioEncoderFactory(void* factory);
+
  private:
   static std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
       video_encoder_factory_;
@@ -416,6 +426,9 @@ class LIB_WEBRTC_API lw_extra_Utils {
       external_audio_encoder_factory_;
   static lw_extra_PassthroughAudioEncoderFactory*
       audio_encoder_factory_;
+  // 路由工厂 raw ptr — 用于 SetNextEncoderPassthrough 标记
+  static void* routing_video_encoder_factory_;
+  static void* routing_audio_encoder_factory_;
 };
 
 }  // namespace libwebrtc

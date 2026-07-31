@@ -9,6 +9,7 @@
 #include "rtc_base/buffer.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/synchronization/mutex.h"
+#include "routing_video_encoder_factory.h"
 
 namespace libwebrtc {
 
@@ -22,6 +23,8 @@ lw_extra_PassthroughAudioEncoderFactory*
     lw_extra_Utils::external_audio_encoder_factory_ = nullptr;
 lw_extra_PassthroughAudioEncoderFactory*
     lw_extra_Utils::audio_encoder_factory_ = nullptr;
+void* lw_extra_Utils::routing_video_encoder_factory_ = nullptr;
+void* lw_extra_Utils::routing_audio_encoder_factory_ = nullptr;
 
 // ==================== PassthroughVideoEncoder ====================
 
@@ -485,19 +488,24 @@ void lw_extra_RtpTransceiverImpl::EnsureInitialized() {
   lw_extra_PassthroughVideoEncoder* video_encoder = nullptr;
   lw_extra_PassthroughAudioEncoder* audio_encoder = nullptr;
 
+  // ★ RoutingVideoEncoderFactory 保证 encoder 已在 create_answer 期间入队
+  //    (factory->Create() 在 SetLocalDescription 时被 WebRTC pipeline 调用，
+  //     标记 SetNextPassthrough() 确保 encoded track 创建 passthrough encoder)
   if (media_type == RTCMediaType::VIDEO && video_factory_) {
     video_encoder = video_factory_->GetNextEncoder();
     if (!video_encoder) {
-      RTC_LOG(LS_WARNING) << "PassthroughVideoEncoder not yet created by pipeline, will retry";
+      RTC_LOG(LS_WARNING) << "PassthroughVideoEncoder not in queue — "
+          "ensure SetNextEncoderPassthrough was called before create_answer";
     }
   } else if (media_type == RTCMediaType::AUDIO && audio_factory_) {
     audio_encoder = audio_factory_->GetNextEncoder();
     if (!audio_encoder) {
-      RTC_LOG(LS_WARNING) << "PassthroughAudioEncoder not yet created by pipeline, will retry";
+      RTC_LOG(LS_WARNING) << "PassthroughAudioEncoder not in queue — "
+          "ensure SetNextEncoderPassthrough was called before create_answer";
     }
   }
 
-  // 创建发送器 (encoder 可能尚未创建，此时传 nullptr)
+  // 创建发送器
   if (rtp_sender) {
     encoded_sender_ = std::make_unique<lw_extra_EncodedSenderImpl>(
         rtp_sender, video_encoder, audio_encoder);
@@ -509,22 +517,9 @@ void lw_extra_RtpTransceiverImpl::EnsureInitialized() {
         std::make_unique<lw_extra_EncodedReceiverImpl>(rtp_receiver);
   }
 
-  // 仅当发送端拿到有效 encoder 或接收端已就绪时才标记初始化完成。
-  // 如果 rtp_sender 存在但 encoder 尚未创建 (video_encoder/audio_encoder 为空),
-  // 不标记为 initialized，允许后续调用重试 GetNextEncoder()。
-  bool sender_ready = !rtp_sender || video_encoder || audio_encoder;
-  bool receiver_ready = rtp_receiver != nullptr;
-  // 关键修复: 如果 sender 存在但没拿到 encoder，不要标记 initialized
-  // 这样下次调用 GetEncodedSender() 时会重新执行 EnsureInitialized()，
-  // GetNextEncoder() 可能此时已能从队列中取出 pipeline 创建的 encoder。
-  bool sender_missing_encoder = rtp_sender
-      && ((media_type == RTCMediaType::VIDEO && !video_encoder)
-       || (media_type == RTCMediaType::AUDIO && !audio_encoder));
-  if ((sender_ready || receiver_ready) && !sender_missing_encoder) {
-    initialized_ = true;
-  } else if (sender_missing_encoder) {
-    RTC_LOG(LS_INFO) << "Sender exists but encoder not ready, leaving uninitialized for retry";
-  }
+  // 标记初始化完成。如果 encoder 暂时为 null (defensive)，发送时
+  // SendEncodedVideoFrame 会检查 video_encoder_ 并返回 false。
+  initialized_ = true;
 }
 
 lw_extra_EncodedSender* lw_extra_RtpTransceiverImpl::GetEncodedSender() {
@@ -629,6 +624,32 @@ lw_extra_PeerConnectionImpl::GetAllTransceivers() {
 
 // ==================== Utils ====================
 
+void lw_extra_Utils::SetRoutingVideoEncoderFactory(void* factory) {
+  routing_video_encoder_factory_ = factory;
+}
+
+void lw_extra_Utils::SetRoutingAudioEncoderFactory(void* factory) {
+  routing_audio_encoder_factory_ = factory;
+}
+
+void lw_extra_Utils::SetNextVideoEncoderPassthrough(bool enabled) {
+  fprintf(stderr, "[lw_extra] SetNextVideoEncoderPassthrough: enabled=%d factory=%p\n",
+      (int)enabled, routing_video_encoder_factory_);
+  if (routing_video_encoder_factory_) {
+    static_cast<RoutingVideoEncoderFactory*>(
+        routing_video_encoder_factory_)->SetNextPassthrough(enabled);
+  }
+}
+
+void lw_extra_Utils::SetNextAudioEncoderPassthrough(bool enabled) {
+  fprintf(stderr, "[lw_extra] SetNextAudioEncoderPassthrough: enabled=%d factory=%p\n",
+      (int)enabled, routing_audio_encoder_factory_);
+  if (routing_audio_encoder_factory_) {
+    static_cast<RoutingAudioEncoderFactory*>(
+        routing_audio_encoder_factory_)->SetNextPassthrough(enabled);
+  }
+}
+
 lw_extra_PeerConnection*
 lw_extra_Utils::CreateExtendedPeerConnection(
     scoped_refptr<RTCPeerConnection> peer_connection) {
@@ -637,8 +658,9 @@ lw_extra_Utils::CreateExtendedPeerConnection(
     return nullptr;
   }
 
-  // 确保工厂已创建
-  // 优先使用外部工厂（由 RTCPeerConnectionFactoryImpl 注入）
+  // 使用外部注入的 passthrough factory（由 RTCPeerConnectionFactoryImpl::Initialize() 注入，
+  // 实际上是 RoutingVideoEncoderFactory 内部的 passthrough 子工厂）。
+  // 如果外部工厂未设置（Initialize 未调用），则创建独立工厂作为后备。
   auto* video_factory = external_video_encoder_factory_;
   if (!video_factory) {
     if (!video_encoder_factory_) {
@@ -648,7 +670,6 @@ lw_extra_Utils::CreateExtendedPeerConnection(
     video_factory = video_encoder_factory_.get();
   }
 
-  // 优先使用外部音频工厂
   auto* audio_factory = external_audio_encoder_factory_;
   if (!audio_factory) {
     if (!audio_encoder_factory_) {

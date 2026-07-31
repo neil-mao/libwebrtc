@@ -75,26 +75,17 @@ class RTCPeerConnectionFactory : public RefCountInterface {
       RTCMediaType media_type) = 0;
 
   /**
-   * @brief 设置是否使用 Passthrough 视频编码器
+   * @brief 设置下一次 AddTrack 使用的编码器类型（单次生效的标记）
    *
-   * 启用后，Initialize() 将使用 PassthroughVideoEncoderFactory
-   * 替代内置编码器工厂，允许直接发送预编码的 H264 数据。
-   * 必须在 Initialize() 之前调用。
+   * 在 AddTrack/ReNegotiation 前调用。标记会被下一次 encoder Create()
+   * 消费并自动复位，因此不影响后续 RGBA track 使用内置编码器。
    *
-   * @param enabled true 使用 passthrough 编码器
+   * 必须在 AddTrack 或 create_answer 之前调用。
+   *
+   * @param video true = 下一个 video track 用 passthrough encoder
+   * @param audio true = 下一个 audio track 用 passthrough encoder
    */
-  virtual void SetUsePassthroughVideoEncoder(bool enabled) = 0;
-
-  /**
-   * @brief 设置是否使用 Passthrough 音频编码器
-   *
-   * 启用后，Initialize() 将使用 PassthroughAudioEncoderFactory
-   * 替代内置音频编码器工厂，允许直接发送预编码的 Opus 数据。
-   * 必须在 Initialize() 之前调用。
-   *
-   * @param enabled true 使用 passthrough 编码器
-   */
-  virtual void SetUsePassthroughAudioEncoder(bool enabled) = 0;
+  virtual void SetNextEncoderPassthrough(bool video, bool audio) = 0;
 };
 
 }  // namespace libwebrtc

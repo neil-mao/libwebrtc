@@ -3,6 +3,7 @@
 #include <cstdlib>
 
 #include "rtc_lw_extra_impl.h"
+#include "routing_video_encoder_factory.h"
 
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
@@ -103,47 +104,42 @@ bool RTCPeerConnectionFactoryImpl::Initialize() {
   }
 
   if (!rtc_peerconnection_factory_) {
-    // 如果启用了 passthrough 视频编码模式，创建 PassthroughVideoEncoderFactory
-    if (use_passthrough_video_encoder_ && !passthrough_video_encoder_factory_) {
-      passthrough_video_encoder_factory_ =
-          std::make_unique<lw_extra_PassthroughVideoEncoderFactory>();
-      // 注入到 lw_extra_Utils，使 CreateExtendedPeerConnection 复用同一工厂
-      lw_extra_Utils::SetExternalVideoEncoderFactory(
-          passthrough_video_encoder_factory_.get());
-    }
+    // ★ 始终创建 RoutingVideoEncoderFactory — 同时包含 builtin 和 passthrough 子工厂。
+    //    通过 SetNextPassthrough() 标记决定下一次 Create() 返回哪种 encoder。
+    //    这样 RGBA track 自动走 builtin，encoded track 走 passthrough，同在一个 PC。
 
-    // 如果启用了 passthrough 音频编码模式，创建 PassthroughAudioEncoderFactory
-    if (use_passthrough_audio_encoder_ && !passthrough_audio_encoder_factory_) {
-      passthrough_audio_encoder_factory_ =
-          new lw_extra_PassthroughAudioEncoderFactory();
-      // 注入到 lw_extra_Utils，使 CreateExtendedPeerConnection 复用同一工厂
-      lw_extra_Utils::SetExternalAudioEncoderFactory(
-          passthrough_audio_encoder_factory_);
-    }
+    // 创建 Passthrough 子工厂并注入到 lw_extra_Utils
+    auto passthrough_video_factory =
+        std::make_unique<lw_extra_PassthroughVideoEncoderFactory>();
+    lw_extra_Utils::SetExternalVideoEncoderFactory(
+        passthrough_video_factory.get());
 
-    // 视频编码器工厂：passthrough 模式使用自定义工厂，否则使用内置工厂。
-    // 将 unique_ptr 所有权转移给 CreatePeerConnectionFactory（WebRTC 内部管理生命周期）。
-    std::unique_ptr<webrtc::VideoEncoderFactory> video_encoder_factory;
-    if (use_passthrough_video_encoder_) {
-      video_encoder_factory = std::move(passthrough_video_encoder_factory_);
-    } else {
+    // 创建 Passthrough 音频子工厂
+    auto* passthrough_audio_factory =
+        new lw_extra_PassthroughAudioEncoderFactory();
+    lw_extra_Utils::SetExternalAudioEncoderFactory(
+        passthrough_audio_factory);
+
+    // 视频路由工厂: builtin + passthrough
 #if defined(USE_INTEL_MEDIA_SDK)
-      builtin_video_encoder_factory_ = CreateIntelVideoEncoderFactory();
-      video_encoder_factory = std::move(builtin_video_encoder_factory_);
+    auto builtin_video = CreateIntelVideoEncoderFactory();
 #else
-      builtin_video_encoder_factory_ = webrtc::CreateBuiltinVideoEncoderFactory();
-      video_encoder_factory = std::move(builtin_video_encoder_factory_);
+    auto builtin_video = webrtc::CreateBuiltinVideoEncoderFactory();
 #endif
-    }
+    auto routing_video = std::make_unique<RoutingVideoEncoderFactory>(
+        std::move(builtin_video), std::move(passthrough_video_factory));
+    routing_video_encoder_factory_ = routing_video.get();  // 保存 raw ptr
+    lw_extra_Utils::SetRoutingVideoEncoderFactory(routing_video.get());
+    std::unique_ptr<webrtc::VideoEncoderFactory> video_encoder_factory =
+        std::move(routing_video);
 
-    // 音频编码器工厂：passthrough 模式使用自定义工厂，否则使用内置工厂。
-    // PassthroughAudioEncoderFactory 通过 scoped_refptr 管理生命周期（refcounted）。
-    webrtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory;
-    if (use_passthrough_audio_encoder_ && passthrough_audio_encoder_factory_) {
-      audio_encoder_factory = passthrough_audio_encoder_factory_;
-    } else {
-      audio_encoder_factory = webrtc::CreateBuiltinAudioEncoderFactory();
-    }
+    // 音频路由工厂: builtin + passthrough
+    routing_audio_encoder_factory_ = new RoutingAudioEncoderFactory(
+        webrtc::CreateBuiltinAudioEncoderFactory(),
+        passthrough_audio_factory);
+    lw_extra_Utils::SetRoutingAudioEncoderFactory(routing_audio_encoder_factory_);
+    webrtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory =
+        routing_audio_encoder_factory_;
 
     rtc_peerconnection_factory_ = CreatePeerConnectionFactory(
         network_thread_.get(), worker_thread_.get(), signaling_thread_.get(),
@@ -177,9 +173,15 @@ bool RTCPeerConnectionFactoryImpl::Terminate() {
     audio_processing_impl_ = nullptr;
   });
   // 清除外部工厂指针，避免 rtc_peerconnection_factory_ 销毁后悬挂
+  lw_extra_Utils::SetExternalVideoEncoderFactory(nullptr);
   lw_extra_Utils::SetExternalAudioEncoderFactory(nullptr);
-  passthrough_audio_encoder_factory_ = nullptr;
+  lw_extra_Utils::SetRoutingVideoEncoderFactory(nullptr);
+  lw_extra_Utils::SetRoutingAudioEncoderFactory(nullptr);
   rtc_peerconnection_factory_ = NULL;
+  // routing_*_factory_ 由 CreatePeerConnectionFactory 内部管理生命周期，
+  // rtc_peerconnection_factory_ 销毁后它们也会被释放。
+  routing_video_encoder_factory_ = nullptr;
+  routing_audio_encoder_factory_ = nullptr;
   if (audio_device_module_) {
     worker_thread_->BlockingCall([this] { DestroyAudioDeviceModule_w(); });
   }
@@ -512,12 +514,12 @@ RTCPeerConnectionFactoryImpl::GetRtpReceiverCapabilities(
       new RefCountedObject<RTCRtpCapabilitiesImpl>(rtp_capabilities));
 }
 
-void RTCPeerConnectionFactoryImpl::SetUsePassthroughVideoEncoder(bool enabled) {
-  use_passthrough_video_encoder_ = enabled;
-}
-
-void RTCPeerConnectionFactoryImpl::SetUsePassthroughAudioEncoder(bool enabled) {
-  use_passthrough_audio_encoder_ = enabled;
+void RTCPeerConnectionFactoryImpl::SetNextEncoderPassthrough(bool video,
+                                                             bool audio) {
+  if (routing_video_encoder_factory_)
+    routing_video_encoder_factory_->SetNextPassthrough(video);
+  if (routing_audio_encoder_factory_)
+    routing_audio_encoder_factory_->SetNextPassthrough(audio);
 }
 
 }  // namespace libwebrtc

@@ -27,6 +27,8 @@ namespace libwebrtc {
 
 class lw_extra_PassthroughVideoEncoderFactory;
 class lw_extra_PassthroughAudioEncoderFactory;
+class RoutingVideoEncoderFactory;
+class RoutingAudioEncoderFactory;
 
 class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
  public:
@@ -88,20 +90,10 @@ class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
   scoped_refptr<RTCRtpCapabilities> GetRtpReceiverCapabilities(
       RTCMediaType media_type) override;
 
-  void SetUsePassthroughVideoEncoder(bool enabled) override;
-
-  void SetUsePassthroughAudioEncoder(bool enabled) override;
+  /// 设置下一个 AddTrack / create_answer 使用 passthrough encoder
+  void SetNextEncoderPassthrough(bool video, bool audio) override;
 
   webrtc::Thread* signaling_thread() { return signaling_thread_.get(); }
-
-  /**
-   * @brief 获取 Passthrough 视频编码器工厂
-   *
-   * @return 工厂指针，如果未启用 passthrough 模式则返回 nullptr
-   */
-  lw_extra_PassthroughVideoEncoderFactory* passthrough_video_encoder_factory() {
-    return passthrough_video_encoder_factory_.get();
-  }
 
  protected:
   void CreateAudioDeviceModule_w();
@@ -139,13 +131,10 @@ class RTCPeerConnectionFactoryImpl : public RTCPeerConnectionFactory {
   webrtc::scoped_refptr<webrtc::CustomAudioTransportFactory>
       audio_transport_factory_;
   webrtc::Environment env_;
-  bool use_passthrough_video_encoder_ = false;
-  std::unique_ptr<lw_extra_PassthroughVideoEncoderFactory>
-      passthrough_video_encoder_factory_;
-  std::unique_ptr<webrtc::VideoEncoderFactory> builtin_video_encoder_factory_;
-  bool use_passthrough_audio_encoder_ = false;
-  lw_extra_PassthroughAudioEncoderFactory*
-      passthrough_audio_encoder_factory_ = nullptr;
+  // 路由编码器工厂 raw ptr — 所有权通过 std::move 转移给 CreatePeerConnectionFactory，
+  // raw ptr 仅用于 SetNextEncoderPassthrough() 设置标记
+  RoutingVideoEncoderFactory* routing_video_encoder_factory_ = nullptr;
+  RoutingAudioEncoderFactory* routing_audio_encoder_factory_ = nullptr;
 };
 
 }  // namespace libwebrtc
