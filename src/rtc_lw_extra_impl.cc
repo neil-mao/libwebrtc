@@ -38,8 +38,8 @@ lw_extra_PassthroughVideoEncoder::~lw_extra_PassthroughVideoEncoder() {}
 int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
     const webrtc::VideoCodec* codec_settings, int32_t number_of_cores,
     size_t max_payload_size) {
-  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: codec=%d plType=%d width=%d height=%d fps=%d\n",
-      (int)codec_settings->codecType, (int)codec_settings->plType,
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: codec=%d width=%d height=%d fps=%d\n",
+      (int)codec_settings->codecType,
       codec_settings->width, codec_settings->height, codec_settings->maxFramerate);
   // 检查传入的 codec_settings（而非成员变量）的编码类型
   if (codec_settings->codecType != webrtc::kVideoCodecH264 &&
@@ -52,8 +52,7 @@ int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
   }
   codec_settings_ = *codec_settings;
   initialized_ = true;
-  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: SUCCESS (plType=%d)\n",
-      (int)codec_settings->plType);
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: SUCCESS\n");
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
@@ -154,8 +153,8 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
   static int vid_send_ok = 0;
   vid_send_ok++;
   if (vid_send_ok <= 5 || vid_send_ok % 150 == 0)
-    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OK #%d size=%zu key=%d pt=%d\n",
-        vid_send_ok, frame.size, (int)frame.is_key_frame, (int)codec_settings_.plType);
+    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OK #%d size=%zu key=%d\n",
+        vid_send_ok, frame.size, (int)frame.is_key_frame);
   return true;
 }
 
