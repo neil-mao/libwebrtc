@@ -110,12 +110,12 @@ void PassthroughFrameTransformer::Transform(
 }
 
 void PassthroughFrameTransformer::RegisterTransformedFrameCallback(
-    scoped_refptr<webrtc::TransformedFrameCallback> callback) {
+    webrtc::scoped_refptr<webrtc::TransformedFrameCallback> callback) {
   callback_ = callback;
 }
 
 void PassthroughFrameTransformer::RegisterTransformedFrameSinkCallback(
-    scoped_refptr<webrtc::TransformedFrameCallback> callback,
+    webrtc::scoped_refptr<webrtc::TransformedFrameCallback> callback,
     uint32_t ssrc) {
   callback_ = callback;
 }

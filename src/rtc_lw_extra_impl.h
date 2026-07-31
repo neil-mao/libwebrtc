@@ -56,9 +56,9 @@ class PassthroughFrameTransformer : public webrtc::FrameTransformerInterface {
       std::unique_ptr<webrtc::TransformableFrameInterface> frame) override;
 
   void RegisterTransformedFrameCallback(
-      scoped_refptr<webrtc::TransformedFrameCallback> callback) override;
+      webrtc::scoped_refptr<webrtc::TransformedFrameCallback> callback) override;
   void RegisterTransformedFrameSinkCallback(
-      scoped_refptr<webrtc::TransformedFrameCallback> callback,
+      webrtc::scoped_refptr<webrtc::TransformedFrameCallback> callback,
       uint32_t ssrc) override;
   void UnregisterTransformedFrameCallback() override;
   void UnregisterTransformedFrameSinkCallback(uint32_t ssrc) override;
@@ -75,7 +75,7 @@ class PassthroughFrameTransformer : public webrtc::FrameTransformerInterface {
 
  private:
   lw_extra_EncodedReceiverImpl* receiver_;
-  scoped_refptr<webrtc::TransformedFrameCallback> callback_;
+  webrtc::scoped_refptr<webrtc::TransformedFrameCallback> callback_;
   mutable std::atomic<int> ref_count_{0};
 };
 
@@ -335,7 +335,7 @@ class lw_extra_EncodedReceiverImpl : public lw_extra_EncodedReceiver {
   lw_extra_EncodedAudioSink* audio_sink_ = nullptr;
   bool video_enabled_ = false;
   bool audio_enabled_ = false;
-  scoped_refptr<webrtc::FrameTransformerInterface> frame_transformer_;
+  webrtc::scoped_refptr<webrtc::FrameTransformerInterface> frame_transformer_;
 };
 
 // ==================== 扩展 RTP Transceiver 实现 ====================
