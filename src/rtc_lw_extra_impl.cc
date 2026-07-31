@@ -452,8 +452,14 @@ void lw_extra_RtpTransceiverImpl::EnsureInitialized() {
 
   if (media_type == RTCMediaType::VIDEO && video_factory_) {
     video_encoder = video_factory_->GetNextEncoder();
+    if (!video_encoder) {
+      RTC_LOG(LS_WARNING) << "PassthroughVideoEncoder not yet created by pipeline, will retry";
+    }
   } else if (media_type == RTCMediaType::AUDIO && audio_factory_) {
     audio_encoder = audio_factory_->GetNextEncoder();
+    if (!audio_encoder) {
+      RTC_LOG(LS_WARNING) << "PassthroughAudioEncoder not yet created by pipeline, will retry";
+    }
   }
 
   // 创建发送器 (encoder 可能尚未创建，此时传 nullptr)
@@ -469,11 +475,20 @@ void lw_extra_RtpTransceiverImpl::EnsureInitialized() {
   }
 
   // 仅当发送端拿到有效 encoder 或接收端已就绪时才标记初始化完成。
-  // 若 encoder 尚未创建 (video_encoder/audio_encoder 为空), 允许后续重试。
+  // 如果 rtp_sender 存在但 encoder 尚未创建 (video_encoder/audio_encoder 为空),
+  // 不标记为 initialized，允许后续调用重试 GetNextEncoder()。
   bool sender_ready = !rtp_sender || video_encoder || audio_encoder;
   bool receiver_ready = rtp_receiver != nullptr;
-  if (sender_ready || receiver_ready) {
+  // 关键修复: 如果 sender 存在但没拿到 encoder，不要标记 initialized
+  // 这样下次调用 GetEncodedSender() 时会重新执行 EnsureInitialized()，
+  // GetNextEncoder() 可能此时已能从队列中取出 pipeline 创建的 encoder。
+  bool sender_missing_encoder = rtp_sender
+      && ((media_type == RTCMediaType::VIDEO && !video_encoder)
+       || (media_type == RTCMediaType::AUDIO && !audio_encoder));
+  if ((sender_ready || receiver_ready) && !sender_missing_encoder) {
     initialized_ = true;
+  } else if (sender_missing_encoder) {
+    RTC_LOG(LS_INFO) << "Sender exists but encoder not ready, leaving uninitialized for retry";
   }
 }
 
