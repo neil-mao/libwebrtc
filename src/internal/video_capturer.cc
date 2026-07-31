@@ -11,6 +11,7 @@
 #include "src/internal/video_capturer.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "api/scoped_refptr.h"
 #include "api/video/i420_buffer.h"
@@ -23,8 +24,13 @@ VideoCapturer::VideoCapturer() = default;
 VideoCapturer::~VideoCapturer() = default;
 
 void VideoCapturer::OnFrame(const VideoFrame& frame) {
-  if (disable_resolution_adaptation_) {
-    // 远程桌面模式: 跳过分辨率自适应，直接透传原始帧
+  // 环境变量控制: LIBWEBRTC_DISABLE_VIDEO_ADAPTATION=1 时跳过分辨率自适应
+  static bool disable_adaptation = []() {
+    const char* env = getenv("LIBWEBRTC_DISABLE_VIDEO_ADAPTATION");
+    return env && (env[0] == '1' || env[0] == 'y' || env[0] == 'Y');
+  }();
+
+  if (disable_adaptation || disable_resolution_adaptation_) {
     broadcaster_.OnFrame(frame);
     return;
   }

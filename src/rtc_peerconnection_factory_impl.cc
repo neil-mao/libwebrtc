@@ -350,8 +350,6 @@ scoped_refptr<RTCVideoSource> RTCPeerConnectionFactoryImpl::CreateVideoSource_s(
           static_cast<RTCMediaConstraintsImpl*>(constraints.get());*/
   std::shared_ptr<webrtc::internal::VideoCapturer> internal_capturer =
       capturer_impl->video_capturer();
-  // 远程桌面场景: 禁用分辨率自适应，保持输入帧原始分辨率
-  internal_capturer->set_disable_resolution_adaptation(true);
   webrtc::scoped_refptr<webrtc::VideoTrackSourceInterface> rtc_source_track =
       webrtc::scoped_refptr<webrtc::VideoTrackSourceInterface>(
           new webrtc::RefCountedObject<webrtc::internal::CapturerTrackSource>(
