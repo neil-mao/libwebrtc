@@ -40,10 +40,12 @@ class RoutingVideoEncoderFactory : public webrtc::VideoEncoderFactory {
         passthrough_(std::move(passthrough)) {}
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override {
-    // 合并两个工厂支持的格式，使 SDP 协商能看到两种能力
-    auto formats = builtin_->GetSupportedFormats();
-    auto p = passthrough_->GetSupportedFormats();
-    formats.insert(formats.end(), p.begin(), p.end());
+    // passthrough 格式排在前面，使 H264 成为首选 codec。
+    // 这样 VideoStreamEncoder 创建 encoder 时直接传 format="H264"，
+    // VideoSendStream 内部 RTP packetizer 按 H264 配置，正确打包 H264 NAL。
+    auto formats = passthrough_->GetSupportedFormats();  // H264, AV1 排前面
+    auto b = builtin_->GetSupportedFormats();
+    formats.insert(formats.end(), b.begin(), b.end());
     return formats;
   }
 
@@ -103,9 +105,10 @@ class RoutingAudioEncoderFactory : public webrtc::AudioEncoderFactory {
   }
 
   std::vector<webrtc::AudioCodecSpec> GetSupportedEncoders() override {
-    auto specs = builtin_->GetSupportedEncoders();
-    auto p = passthrough_->GetSupportedEncoders();
-    specs.insert(specs.end(), p.begin(), p.end());
+    // passthrough 格式排在前面，使 Opus 成为首选 codec
+    auto specs = passthrough_->GetSupportedEncoders();
+    auto b = builtin_->GetSupportedEncoders();
+    specs.insert(specs.end(), b.begin(), b.end());
     return specs;
   }
 
