@@ -23,6 +23,12 @@ VideoCapturer::VideoCapturer() = default;
 VideoCapturer::~VideoCapturer() = default;
 
 void VideoCapturer::OnFrame(const VideoFrame& frame) {
+  if (disable_resolution_adaptation_) {
+    // 远程桌面模式: 跳过分辨率自适应，直接透传原始帧
+    broadcaster_.OnFrame(frame);
+    return;
+  }
+
   int cropped_width = 0;
   int cropped_height = 0;
   int out_width = 0;

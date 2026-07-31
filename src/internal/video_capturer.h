@@ -45,6 +45,11 @@ class VideoCapturer : public webrtc::VideoSourceInterface<VideoFrame> {
   // the same path that camera/desktop subclasses feed.
   void OnFrame(const VideoFrame& frame);
 
+  // 禁用分辨率自适应 — 远程桌面场景需要固定分辨率
+  void set_disable_resolution_adaptation(bool disable) {
+    disable_resolution_adaptation_ = disable;
+  }
+
  protected:
   webrtc::VideoSinkWants GetSinkWants();
 
@@ -53,6 +58,7 @@ class VideoCapturer : public webrtc::VideoSourceInterface<VideoFrame> {
 
   webrtc::VideoBroadcaster broadcaster_;
   webrtc::VideoAdapter video_adapter_;
+  bool disable_resolution_adaptation_ = false;
 };
 }  // namespace internal
 }  // namespace webrtc
