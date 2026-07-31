@@ -41,15 +41,11 @@ int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
   fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: codec=%d width=%d height=%d fps=%d\n",
       (int)codec_settings->codecType,
       codec_settings->width, codec_settings->height, codec_settings->maxFramerate);
-  // 检查传入的 codec_settings（而非成员变量）的编码类型
-  if (codec_settings->codecType != webrtc::kVideoCodecH264 &&
-      codec_settings->codecType != webrtc::kVideoCodecAV1) {
-    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: UNSUPPORTED codec type %d\n",
-        (int)codec_settings->codecType);
-    RTC_LOG(LS_ERROR) << "Unsupported codec type: "
-                      << codec_settings->codecType;
-    return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
-  }
+  // Passthrough encoder 不实际编码，接受所有 codec 类型（包括 VP8）。
+  // 实际编码数据通过 SendEncodedFrame 直接注入 OnEncodedImage。
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: codec=%d width=%d height=%d fps=%d\n",
+      (int)codec_settings->codecType,
+      codec_settings->width, codec_settings->height, codec_settings->maxFramerate);
   codec_settings_ = *codec_settings;
   initialized_ = true;
   fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: SUCCESS\n");
