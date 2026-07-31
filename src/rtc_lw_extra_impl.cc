@@ -1,5 +1,7 @@
 #include "rtc_lw_extra_impl.h"
 
+#include <cstdio>
+
 #include "api/video_codecs/video_codec.h"
 #include "api/video/video_codec_type.h"
 #include "modules/video_coding/include/video_codec_interface.h"
@@ -33,15 +35,22 @@ lw_extra_PassthroughVideoEncoder::~lw_extra_PassthroughVideoEncoder() {}
 int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
     const webrtc::VideoCodec* codec_settings, int32_t number_of_cores,
     size_t max_payload_size) {
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: codec=%d plType=%d width=%d height=%d fps=%d\n",
+      (int)codec_settings->codecType, (int)codec_settings->plType,
+      codec_settings->width, codec_settings->height, codec_settings->maxFramerate);
   // 检查传入的 codec_settings（而非成员变量）的编码类型
   if (codec_settings->codecType != webrtc::kVideoCodecH264 &&
       codec_settings->codecType != webrtc::kVideoCodecAV1) {
+    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: UNSUPPORTED codec type %d\n",
+        (int)codec_settings->codecType);
     RTC_LOG(LS_ERROR) << "Unsupported codec type: "
                       << codec_settings->codecType;
     return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
   }
   codec_settings_ = *codec_settings;
   initialized_ = true;
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: SUCCESS (plType=%d)\n",
+      (int)codec_settings->plType);
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
@@ -55,6 +64,8 @@ int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
 int32_t lw_extra_PassthroughVideoEncoder::RegisterEncodeCompleteCallback(
     webrtc::EncodedImageCallback* callback) {
   callback_ = callback;
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::RegisterEncodeCompleteCallback: callback=%p initialized=%d\n",
+      (void*)callback, (int)initialized_);
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
@@ -91,11 +102,14 @@ lw_extra_PassthroughVideoEncoder::GetEncoderInfo() const {
 bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
     const lw_extra_EncodedVideoFrame& frame) {
   if (!callback_ || !initialized_) {
+    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: FAILED callback=%p initialized=%d\n",
+        (void*)callback_, (int)initialized_);
     RTC_LOG(LS_ERROR) << "Encoder not initialized or no callback";
     return false;
   }
 
   if (!frame.data || frame.size == 0) {
+    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: invalid frame data\n");
     RTC_LOG(LS_ERROR) << "Invalid frame data";
     return false;
   }
@@ -126,12 +140,19 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
       callback_->OnEncodedImage(encoded_image, &codec_specific_info);
 
   if (result.error != webrtc::EncodedImageCallback::Result::OK) {
+    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OnEncodedImage FAILED error=%d\n",
+        (int)result.error);
     RTC_LOG(LS_ERROR) << "Failed to send encoded image: error="
                       << result.error;
     return false;
   }
 
   frame_id_ = result.frame_id;
+  static int vid_send_ok = 0;
+  vid_send_ok++;
+  if (vid_send_ok <= 5 || vid_send_ok % 150 == 0)
+    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OK #%d size=%zu key=%d pt=%d\n",
+        vid_send_ok, frame.size, (int)frame.is_key_frame, (int)codec_settings_.plType);
   return true;
 }
 
@@ -207,6 +228,7 @@ lw_extra_PassthroughAudioEncoder::EncodeImpl(
 bool lw_extra_PassthroughAudioEncoder::SendEncodedFrame(
     const lw_extra_EncodedAudioFrame& frame) {
   if (!frame.data || frame.size == 0) {
+    fprintf(stderr, "[lw_extra] PassthroughAudioEncoder::SendEncodedFrame: invalid frame data\n");
     RTC_LOG(LS_ERROR) << "Invalid audio frame data";
     return false;
   }
@@ -217,6 +239,11 @@ bool lw_extra_PassthroughAudioEncoder::SendEncodedFrame(
   pending.data.assign(frame.data, frame.data + frame.size);
   pending.timestamp = frame.timestamp;
   pending_frames_.push_back(std::move(pending));
+  static int audio_send_count = 0;
+  audio_send_count++;
+  if (audio_send_count <= 3 || audio_send_count % 50 == 0)
+    fprintf(stderr, "[lw_extra] PassthroughAudioEncoder::SendEncodedFrame: #%d size=%zu ts=%u queue_depth=%zu\n",
+        audio_send_count, frame.size, frame.timestamp, pending_frames_.size());
   return true;
 }
 
@@ -252,6 +279,8 @@ lw_extra_PassthroughVideoEncoderFactory::Create(
     const webrtc::Environment& env, const webrtc::SdpVideoFormat& format) {
   auto encoder = std::make_unique<lw_extra_PassthroughVideoEncoder>();
   encoder_queue_.push_back(encoder.get());
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoderFactory::Create: encoder=%p queue_size=%zu format=%s\n",
+      (void*)encoder.get(), encoder_queue_.size(), format.name.c_str());
   return encoder;
 }
 
@@ -301,6 +330,8 @@ lw_extra_PassthroughAudioEncoderFactory::Create(
   auto encoder =
       std::make_unique<lw_extra_PassthroughAudioEncoder>(options.payload_type);
   encoder_queue_.push_back(encoder.get());
+  fprintf(stderr, "[lw_extra] PassthroughAudioEncoderFactory::Create: encoder=%p queue_size=%zu pt=%d\n",
+      (void*)encoder.get(), encoder_queue_.size(), options.payload_type);
   return encoder;
 }
 
@@ -327,6 +358,8 @@ lw_extra_EncodedSenderImpl::~lw_extra_EncodedSenderImpl() {}
 bool lw_extra_EncodedSenderImpl::SendEncodedVideoFrame(
     const lw_extra_EncodedVideoFrame& frame) {
   if (!video_enabled_ || !video_encoder_) {
+    fprintf(stderr, "[lw_extra] EncodedSenderImpl::SendEncodedVideoFrame: FAILED video_enabled=%d video_encoder=%p\n",
+        (int)video_enabled_, (void*)video_encoder_);
     RTC_LOG(LS_ERROR) << "Video encoded send not enabled or no encoder";
     return false;
   }
@@ -336,6 +369,8 @@ bool lw_extra_EncodedSenderImpl::SendEncodedVideoFrame(
 bool lw_extra_EncodedSenderImpl::SendEncodedAudioFrame(
     const lw_extra_EncodedAudioFrame& frame) {
   if (!audio_enabled_ || !audio_encoder_) {
+    fprintf(stderr, "[lw_extra] EncodedSenderImpl::SendEncodedAudioFrame: FAILED audio_enabled=%d audio_encoder=%p\n",
+        (int)audio_enabled_, (void*)audio_encoder_);
     RTC_LOG(LS_ERROR) << "Audio encoded send not enabled or no encoder";
     return false;
   }
