@@ -156,6 +156,15 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
 
 void lw_extra_PassthroughVideoEncoder::SetCodec(lw_extra_VideoCodec codec) {
   codec_ = codec;
+  // 覆盖 codec_settings_ 中的 codecType，确保与 SendEncodedFrame 一致
+  // 避免 OnEncodedImage 中因 codec 不匹配而 crash
+  if (codec == lw_extra_VideoCodec::kH264) {
+    codec_settings_.codecType = webrtc::kVideoCodecH264;
+  } else if (codec == lw_extra_VideoCodec::kAV1) {
+    codec_settings_.codecType = webrtc::kVideoCodecAV1;
+  }
+  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SetCodec: codec=%d codecType=%d\n",
+      (int)codec, (int)codec_settings_.codecType);
 }
 
 // ==================== PassthroughAudioEncoder ====================
