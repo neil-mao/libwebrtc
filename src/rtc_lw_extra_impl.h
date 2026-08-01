@@ -122,6 +122,13 @@ class lw_extra_PassthroughVideoEncoder : public webrtc::VideoEncoder {
   // 设置编码模式（H264 或 AV1）
   void SetCodec(lw_extra_VideoCodec codec);
 
+  // 获取 WebRTC 实际协商的 codec 类型 (从 InitEncode 的 codec_settings 读取)
+  lw_extra_VideoCodec GetActualCodec() const {
+    if (codec_settings_.codecType == webrtc::kVideoCodecAV1)
+      return lw_extra_VideoCodec::kAV1;
+    return lw_extra_VideoCodec::kH264;
+  }
+
  private:
   webrtc::EncodedImageCallback* callback_ = nullptr;
   webrtc::VideoCodec codec_settings_;

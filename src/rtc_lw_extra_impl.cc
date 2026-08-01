@@ -503,7 +503,8 @@ bool lw_extra_EncodedSenderImpl::SendEncodedAudioFrame(
 void lw_extra_EncodedSenderImpl::SetVideoEncodedSend(bool enabled) {
   video_enabled_ = enabled;
   if (video_encoder_) {
-    video_encoder_->SetCodec(lw_extra_VideoCodec::kH264);
+    // 使用 WebRTC 实际协商的 codec (InitEncode 时设置)，而非硬编码 H264
+    video_encoder_->SetCodec(video_encoder_->GetActualCodec());
   }
 }
 
