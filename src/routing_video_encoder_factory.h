@@ -3,8 +3,23 @@
 
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <vector>
+
+// ── 调试日志开关 ────────────────────────────────────────────
+// 设置环境变量 LIBWEBRTC_LW_LOG=1 开启 [routing] 日志，默认关闭
+inline bool lw_log_enabled() {
+    static int enabled = -1;
+    if (enabled < 0) {
+        const char* v = getenv("LIBWEBRTC_LW_LOG");
+        enabled = (v && (v[0] == '1' || v[0] == 'y' || v[0] == 'Y')) ? 1 : 0;
+    }
+    return enabled == 1;
+}
+#define LW_LOG(fmt, ...) do { \
+    if (lw_log_enabled()) fprintf(stderr, fmt, ##__VA_ARGS__); \
+} while(0)
 
 #include "api/video_codecs/video_encoder.h"
 #include "api/video_codecs/video_encoder_factory.h"
@@ -54,7 +69,7 @@ class RoutingVideoEncoderFactory : public webrtc::VideoEncoderFactory {
       const webrtc::SdpVideoFormat& format) override {
     // exchange: 读取当前值并复位为 false —— 每次标记只影响一个 track
     bool use_passthrough = next_is_passthrough_.exchange(false);
-    fprintf(stderr, "[routing] Video Create: passthrough=%d format=%s\n",
+    LW_LOG("[routing] Video Create: passthrough=%d format=%s\n",
         (int)use_passthrough, format.name.c_str());
     if (use_passthrough) {
       return passthrough_->Create(env, format);
@@ -64,7 +79,7 @@ class RoutingVideoEncoderFactory : public webrtc::VideoEncoderFactory {
 
   /// 设置下一个 Create() 返回 passthrough encoder（单次生效）
   void SetNextPassthrough(bool v) {
-    fprintf(stderr, "[routing] Video SetNextPassthrough: %d\n", (int)v);
+    LW_LOG("[routing] Video SetNextPassthrough: %d\n", (int)v);
     next_is_passthrough_.store(v);
   }
 
@@ -127,7 +142,7 @@ class RoutingAudioEncoderFactory : public webrtc::AudioEncoderFactory {
       const webrtc::SdpAudioFormat& format,
       webrtc::AudioEncoderFactory::Options options) override {
     bool use_passthrough = next_is_passthrough_.exchange(false);
-    fprintf(stderr, "[routing] Audio Create: passthrough=%d format=%s pt=%d\n",
+    LW_LOG("[routing] Audio Create: passthrough=%d format=%s pt=%d\n",
         (int)use_passthrough, format.name.c_str(), options.payload_type);
     if (use_passthrough) {
       return passthrough_->Create(env, format, options);
@@ -137,7 +152,7 @@ class RoutingAudioEncoderFactory : public webrtc::AudioEncoderFactory {
 
   /// 设置下一个 Create() 返回 passthrough encoder（单次生效）
   void SetNextPassthrough(bool v) {
-    fprintf(stderr, "[routing] Audio SetNextPassthrough: %d\n", (int)v);
+    LW_LOG("[routing] Audio SetNextPassthrough: %d\n", (int)v);
     next_is_passthrough_.store(v);
   }
 

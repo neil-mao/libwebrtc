@@ -1,6 +1,7 @@
 #include "rtc_lw_extra_impl.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 #include "api/video_codecs/video_codec.h"
 #include "api/video/video_codec_type.h"
@@ -9,7 +10,7 @@
 #include "rtc_base/buffer.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/synchronization/mutex.h"
-#include "routing_video_encoder_factory.h"
+#include "routing_video_encoder_factory.h"  // provides LW_LOG macro
 #include "rtc_rtp_receiver_impl.h"
 
 namespace libwebrtc {
@@ -67,8 +68,7 @@ void PassthroughFrameTransformer::Transform(
     static int rx_count = 0;
     rx_count++;
     if (rx_count <= 5 || rx_count % 30 == 0)
-      fprintf(stderr,
-          "[lw_extra] PassthroughFrameTransformer::Transform video #%d: "
+      LW_LOG("[lw_extra] PassthroughFrameTransformer::Transform video #%d: "
           "%dx%d %zuB key=%d codec=%d ts=%u\n",
           rx_count, header.width, header.height, data.size(),
           video_frame->IsKeyFrame() ? 1 : 0, (int)codec,
@@ -93,8 +93,7 @@ void PassthroughFrameTransformer::Transform(
     static int rx_audio_count = 0;
     rx_audio_count++;
     if (rx_audio_count <= 5 || rx_audio_count % 50 == 0)
-      fprintf(stderr,
-          "[lw_extra] PassthroughFrameTransformer::Transform audio #%d: "
+      LW_LOG("[lw_extra] PassthroughFrameTransformer::Transform audio #%d: "
           "%zuB ts=%u\n",
           rx_audio_count, data.size(), audio_frame->GetTimestamp());
 
@@ -154,14 +153,14 @@ lw_extra_PassthroughVideoEncoder::~lw_extra_PassthroughVideoEncoder() {}
 int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
     const webrtc::VideoCodec* codec_settings, int32_t number_of_cores,
     size_t max_payload_size) {
-  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: codec=%d width=%d height=%d fps=%d\n",
+  LW_LOG("[lw_extra] PassthroughVideoEncoder::InitEncode: codec=%d width=%d height=%d fps=%d\n",
       (int)codec_settings->codecType,
       codec_settings->width, codec_settings->height, codec_settings->maxFramerate);
   // GetSupportedFormats 中 passthrough 格式排在前面，Create() 直接传 H264/AV1，
   // codecType 已与 SendEncodedFrame 数据一致，无需覆盖。
   codec_settings_ = *codec_settings;
   initialized_ = true;
-  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::InitEncode: done codec=%d width=%d height=%d fps=%d\n",
+  LW_LOG("[lw_extra] PassthroughVideoEncoder::InitEncode: done codec=%d width=%d height=%d fps=%d\n",
       (int)codec_settings_.codecType,
       codec_settings_.width, codec_settings_.height, codec_settings_.maxFramerate);
   return WEBRTC_VIDEO_CODEC_OK;
@@ -177,7 +176,7 @@ int32_t lw_extra_PassthroughVideoEncoder::InitEncode(
 int32_t lw_extra_PassthroughVideoEncoder::RegisterEncodeCompleteCallback(
     webrtc::EncodedImageCallback* callback) {
   callback_ = callback;
-  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::RegisterEncodeCompleteCallback: callback=%p initialized=%d\n",
+  LW_LOG("[lw_extra] PassthroughVideoEncoder::RegisterEncodeCompleteCallback: callback=%p initialized=%d\n",
       (void*)callback, (int)initialized_);
   return WEBRTC_VIDEO_CODEC_OK;
 }
@@ -215,14 +214,14 @@ lw_extra_PassthroughVideoEncoder::GetEncoderInfo() const {
 bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
     const lw_extra_EncodedVideoFrame& frame) {
   if (!callback_ || !initialized_) {
-    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: FAILED callback=%p initialized=%d\n",
+    LW_LOG("[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: FAILED callback=%p initialized=%d\n",
         (void*)callback_, (int)initialized_);
     RTC_LOG(LS_ERROR) << "Encoder not initialized or no callback";
     return false;
   }
 
   if (!frame.data || frame.size == 0) {
-    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: invalid frame data\n");
+    LW_LOG("[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: invalid frame data\n");
     RTC_LOG(LS_ERROR) << "Invalid frame data";
     return false;
   }
@@ -253,7 +252,7 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
       callback_->OnEncodedImage(encoded_image, &codec_specific_info);
 
   if (result.error != webrtc::EncodedImageCallback::Result::OK) {
-    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OnEncodedImage FAILED error=%d\n",
+    LW_LOG("[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OnEncodedImage FAILED error=%d\n",
         (int)result.error);
     RTC_LOG(LS_ERROR) << "Failed to send encoded image: error="
                       << result.error;
@@ -264,7 +263,7 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
   static int vid_send_ok = 0;
   vid_send_ok++;
   if (vid_send_ok <= 5 || vid_send_ok % 150 == 0)
-    fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OK #%d size=%zu key=%d\n",
+    LW_LOG("[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OK #%d size=%zu key=%d\n",
         vid_send_ok, frame.size, (int)frame.is_key_frame);
   return true;
 }
@@ -277,7 +276,7 @@ void lw_extra_PassthroughVideoEncoder::SetCodec(lw_extra_VideoCodec codec) {
   } else if (codec == lw_extra_VideoCodec::kAV1) {
     codec_settings_.codecType = webrtc::kVideoCodecAV1;
   }
-  fprintf(stderr, "[lw_extra] PassthroughVideoEncoder::SetCodec: codec=%d codecType=%d\n",
+  LW_LOG("[lw_extra] PassthroughVideoEncoder::SetCodec: codec=%d codecType=%d\n",
       (int)codec, (int)codec_settings_.codecType);
 }
 
@@ -315,7 +314,9 @@ void lw_extra_PassthroughAudioEncoder::Reset() { initialized_ = false; }
 
 std::optional<std::pair<webrtc::TimeDelta, webrtc::TimeDelta>>
 lw_extra_PassthroughAudioEncoder::GetFrameLengthRange() const {
-  return std::nullopt;
+  // Opus 标准帧长范围: 10ms ~ 60ms (48000Hz 下 480~2880 samples)
+  return std::make_pair(webrtc::TimeDelta::Millis(10),
+                        webrtc::TimeDelta::Millis(60));
 }
 
 webrtc::AudioEncoder::EncodedInfo
@@ -349,7 +350,7 @@ lw_extra_PassthroughAudioEncoder::EncodeImpl(
 bool lw_extra_PassthroughAudioEncoder::SendEncodedFrame(
     const lw_extra_EncodedAudioFrame& frame) {
   if (!frame.data || frame.size == 0) {
-    fprintf(stderr, "[lw_extra] PassthroughAudioEncoder::SendEncodedFrame: invalid frame data\n");
+    LW_LOG("[lw_extra] PassthroughAudioEncoder::SendEncodedFrame: invalid frame data\n");
     RTC_LOG(LS_ERROR) << "Invalid audio frame data";
     return false;
   }
@@ -363,7 +364,7 @@ bool lw_extra_PassthroughAudioEncoder::SendEncodedFrame(
   static int audio_send_count = 0;
   audio_send_count++;
   if (audio_send_count <= 3 || audio_send_count % 50 == 0)
-    fprintf(stderr, "[lw_extra] PassthroughAudioEncoder::SendEncodedFrame: #%d size=%zu ts=%u queue_depth=%zu\n",
+    LW_LOG("[lw_extra] PassthroughAudioEncoder::SendEncodedFrame: #%d size=%zu ts=%u queue_depth=%zu\n",
         audio_send_count, frame.size, frame.timestamp, pending_frames_.size());
   return true;
 }
@@ -400,7 +401,7 @@ lw_extra_PassthroughVideoEncoderFactory::Create(
     const webrtc::Environment& env, const webrtc::SdpVideoFormat& format) {
   auto encoder = std::make_unique<lw_extra_PassthroughVideoEncoder>();
   encoder_queue_.push_back(encoder.get());
-  fprintf(stderr, "[lw_extra] PassthroughVideoEncoderFactory::Create: encoder=%p queue_size=%zu format=%s\n",
+  LW_LOG("[lw_extra] PassthroughVideoEncoderFactory::Create: encoder=%p queue_size=%zu format=%s\n",
       (void*)encoder.get(), encoder_queue_.size(), format.name.c_str());
   return encoder;
 }
@@ -451,7 +452,7 @@ lw_extra_PassthroughAudioEncoderFactory::Create(
   auto encoder =
       std::make_unique<lw_extra_PassthroughAudioEncoder>(options.payload_type);
   encoder_queue_.push_back(encoder.get());
-  fprintf(stderr, "[lw_extra] PassthroughAudioEncoderFactory::Create: encoder=%p queue_size=%zu pt=%d\n",
+  LW_LOG("[lw_extra] PassthroughAudioEncoderFactory::Create: encoder=%p queue_size=%zu pt=%d\n",
       (void*)encoder.get(), encoder_queue_.size(), options.payload_type);
   return encoder;
 }
@@ -479,7 +480,7 @@ lw_extra_EncodedSenderImpl::~lw_extra_EncodedSenderImpl() {}
 bool lw_extra_EncodedSenderImpl::SendEncodedVideoFrame(
     const lw_extra_EncodedVideoFrame& frame) {
   if (!video_enabled_ || !video_encoder_) {
-    fprintf(stderr, "[lw_extra] EncodedSenderImpl::SendEncodedVideoFrame: FAILED video_enabled=%d video_encoder=%p\n",
+    LW_LOG("[lw_extra] EncodedSenderImpl::SendEncodedVideoFrame: FAILED video_enabled=%d video_encoder=%p\n",
         (int)video_enabled_, (void*)video_encoder_);
     RTC_LOG(LS_ERROR) << "Video encoded send not enabled or no encoder";
     return false;
@@ -490,7 +491,7 @@ bool lw_extra_EncodedSenderImpl::SendEncodedVideoFrame(
 bool lw_extra_EncodedSenderImpl::SendEncodedAudioFrame(
     const lw_extra_EncodedAudioFrame& frame) {
   if (!audio_enabled_ || !audio_encoder_) {
-    fprintf(stderr, "[lw_extra] EncodedSenderImpl::SendEncodedAudioFrame: FAILED audio_enabled=%d audio_encoder=%p\n",
+    LW_LOG("[lw_extra] EncodedSenderImpl::SendEncodedAudioFrame: FAILED audio_enabled=%d audio_encoder=%p\n",
         (int)audio_enabled_, (void*)audio_encoder_);
     RTC_LOG(LS_ERROR) << "Audio encoded send not enabled or no encoder";
     return false;
@@ -548,10 +549,10 @@ void lw_extra_EncodedReceiverImpl::SetVideoEncodedReceive(bool enabled) {
           new PassthroughFrameTransformer(this);
     }
     native->SetDepacketizerToDecoderFrameTransformer(frame_transformer_);
-    fprintf(stderr, "[lw_extra] EncodedReceiver: video frame transformer REGISTERED\n");
+    LW_LOG("[lw_extra] EncodedReceiver: video frame transformer REGISTERED\n");
   } else {
     native->SetDepacketizerToDecoderFrameTransformer(nullptr);
-    fprintf(stderr, "[lw_extra] EncodedReceiver: video frame transformer UNREGISTERED\n");
+    LW_LOG("[lw_extra] EncodedReceiver: video frame transformer UNREGISTERED\n");
   }
 }
 
@@ -568,10 +569,10 @@ void lw_extra_EncodedReceiverImpl::SetAudioEncodedReceive(bool enabled) {
           new PassthroughFrameTransformer(this);
     }
     native->SetDepacketizerToDecoderFrameTransformer(frame_transformer_);
-    fprintf(stderr, "[lw_extra] EncodedReceiver: audio frame transformer REGISTERED\n");
+    LW_LOG("[lw_extra] EncodedReceiver: audio frame transformer REGISTERED\n");
   } else {
     native->SetDepacketizerToDecoderFrameTransformer(nullptr);
-    fprintf(stderr, "[lw_extra] EncodedReceiver: audio frame transformer UNREGISTERED\n");
+    LW_LOG("[lw_extra] EncodedReceiver: audio frame transformer UNREGISTERED\n");
   }
 }
 
@@ -785,7 +786,7 @@ void lw_extra_Utils::SetRoutingAudioEncoderFactory(void* factory) {
 }
 
 void lw_extra_Utils::SetNextVideoEncoderPassthrough(bool enabled) {
-  fprintf(stderr, "[lw_extra] SetNextVideoEncoderPassthrough: enabled=%d factory=%p\n",
+  LW_LOG("[lw_extra] SetNextVideoEncoderPassthrough: enabled=%d factory=%p\n",
       (int)enabled, routing_video_encoder_factory_);
   if (routing_video_encoder_factory_) {
     static_cast<RoutingVideoEncoderFactory*>(
@@ -794,7 +795,7 @@ void lw_extra_Utils::SetNextVideoEncoderPassthrough(bool enabled) {
 }
 
 void lw_extra_Utils::SetNextAudioEncoderPassthrough(bool enabled) {
-  fprintf(stderr, "[lw_extra] SetNextAudioEncoderPassthrough: enabled=%d factory=%p\n",
+  LW_LOG("[lw_extra] SetNextAudioEncoderPassthrough: enabled=%d factory=%p\n",
       (int)enabled, routing_audio_encoder_factory_);
   if (routing_audio_encoder_factory_) {
     static_cast<RoutingAudioEncoderFactory*>(
