@@ -1,6 +1,7 @@
 #ifndef LIB_WEBRTC_RTC_LW_EXTRA_IMPL_HXX
 #define LIB_WEBRTC_RTC_LW_EXTRA_IMPL_HXX
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <vector>
@@ -145,6 +146,21 @@ class lw_extra_PassthroughVideoEncoder : public webrtc::VideoEncoder {
   // 的是内部 encoder 输出，不适用于外部预编码数据。
   webrtc::H264PacketizationMode packetization_mode_ =
       webrtc::H264PacketizationMode::NonInterleaved;
+
+  // ── 方案 B: pending encoded frame queue ─────────────────────
+  // SendEncodedFrame() 只入队，Encode() 出队并通过 OnEncodedImage() 发送。
+  // 这样 VideoStreamEncoder 的 FillMetadataAndTimingInfo 能按 RTP timestamp
+  // 正确匹配（因为走 OnFrame → OnEncodeStarted → Encode 路径）。
+  struct PendingEncodedFrame {
+    std::vector<uint8_t> data;
+    lw_extra_VideoCodec codec = lw_extra_VideoCodec::kH264;
+    bool is_key_frame = false;
+    int width = 0;
+    int height = 0;
+  };
+  static constexpr size_t kMaxPendingFrames = 3;
+  std::deque<PendingEncodedFrame> pending_frames_;
+  webrtc::Mutex pending_mutex_;
 };
 
 // ==================== 自定义音频编码器 ====================

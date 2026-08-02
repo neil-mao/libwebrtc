@@ -190,8 +190,127 @@ int32_t lw_extra_PassthroughVideoEncoder::Release() {
 int32_t lw_extra_PassthroughVideoEncoder::Encode(
     const webrtc::VideoFrame& frame,
     const std::vector<webrtc::VideoFrameType>* frame_types) {
-  // 传递编码器不编码帧，只接受通过 SendEncodedFrame 发送的数据
-  // 如果有外部编码数据待发送，应该在这里处理
+  // ★ 方案 B: 从队列取编码数据，通过 OnEncodedImage 发送。
+  //    使用 frame.rtp_timestamp() 而非外部传入的 timestamp——
+  //    这会与 OnEncodeStarted 记录的 timestamp 匹配，
+  //    使 FillMetadataAndTimingInfo 正确填充 capture_time / ntp_time / timing。
+  PendingEncodedFrame pf;
+  bool has_data = false;
+  {
+    webrtc::MutexLock lock(&pending_mutex_);
+    if (!pending_frames_.empty()) {
+      pf = std::move(pending_frames_.front());
+      pending_frames_.pop_front();
+      has_data = true;
+    }
+  }
+
+  if (!has_data) {
+    // 队列为空：dummy frame 在编码数据到达之前触发了 Encode()
+    // （例如初始化 trigger frame），正常返回即可。
+    static int empty_count = 0;
+    empty_count++;
+    if (empty_count <= 3) {
+      FILE* f = fopen("/tmp/bridge_debug.log", "a");
+      if (f) {
+        fprintf(f, "[passthrough B] ENCODE #%d: EMPTY queue (init trigger or no data yet)\n", empty_count);
+        fclose(f);
+      }
+      LW_LOG("[lw_extra] PassthroughVideoEncoder::Encode: EMPTY queue #%d (no pending frame)\n", empty_count);
+    }
+    return WEBRTC_VIDEO_CODEC_OK;
+  }
+
+  if (!callback_) {
+    return WEBRTC_VIDEO_CODEC_OK;
+  }
+
+  // 创建 EncodedImage，使用 frame.rtp_timestamp() 确保匹配
+  webrtc::EncodedImage encoded_image;
+
+  auto buffer = webrtc::EncodedImageBuffer::Create(pf.data.data(), pf.data.size());
+  encoded_image.SetEncodedData(buffer);
+  encoded_image.set_size(pf.data.size());
+  encoded_image.SetRtpTimestamp(frame.rtp_timestamp());   // ★ 关键: VideoStreamEncoder 分配的 timestamp
+  encoded_image._encodedWidth = pf.width;
+  encoded_image._encodedHeight = pf.height;
+
+  // 设置帧类型
+  encoded_image.SetFrameType(
+      pf.is_key_frame ? webrtc::VideoFrameType::kVideoFrameKey
+                      : webrtc::VideoFrameType::kVideoFrameDelta);
+
+  // 设置编解码类型 + H264 codec-specific 信息
+  webrtc::CodecSpecificInfo codec_specific_info;
+  codec_specific_info.codecType =
+      (pf.codec == lw_extra_VideoCodec::kH264) ? webrtc::kVideoCodecH264
+                                               : webrtc::kVideoCodecAV1;
+
+  if (pf.codec == lw_extra_VideoCodec::kH264) {
+    codec_specific_info.codecSpecific.H264.packetization_mode =
+        packetization_mode_;
+    codec_specific_info.codecSpecific.H264.temporal_idx =
+        webrtc::kNoTemporalIdx;
+    codec_specific_info.codecSpecific.H264.idr_frame = pf.is_key_frame;
+    codec_specific_info.codecSpecific.H264.base_layer_sync = false;
+  }
+
+  // 诊断日志 — 写 /tmp/bridge_debug.log
+  static int diag_frame = 0;
+  diag_frame++;
+  if (diag_frame <= 10 || diag_frame % 100 == 0) {
+    FILE* f = fopen("/tmp/bridge_debug.log", "a");
+    if (f) {
+      fprintf(f, "[passthrough B] ENCODE→SEND #%d: "
+          "size=%zu wxh=%dx%d key=%d codec=%d "
+          "frame_rtp_ts=%u "
+          "cs_pkt_mode=%d cs_temporal=0x%02X cs_idr=%d cs_blsync=%d queue_left=%zu\n",
+          diag_frame, pf.data.size(),
+          pf.width, pf.height, (int)pf.is_key_frame,
+          (int)pf.codec,
+          frame.rtp_timestamp(),
+          (pf.codec == lw_extra_VideoCodec::kH264
+               ? (int)codec_specific_info.codecSpecific.H264.packetization_mode
+               : -1),
+          (pf.codec == lw_extra_VideoCodec::kH264
+               ? codec_specific_info.codecSpecific.H264.temporal_idx
+               : 0),
+          (pf.codec == lw_extra_VideoCodec::kH264
+               ? (int)codec_specific_info.codecSpecific.H264.idr_frame
+               : -1),
+          (pf.codec == lw_extra_VideoCodec::kH264
+               ? (int)codec_specific_info.codecSpecific.H264.base_layer_sync
+               : -1),
+          pending_frames_.size());
+      fclose(f);
+    }
+  }
+
+  // 通过回调发送 — 此时 FillMetadataAndTimingInfo 能正确匹配
+  webrtc::EncodedImageCallback::Result result =
+      callback_->OnEncodedImage(encoded_image, &codec_specific_info);
+
+  if (result.error != webrtc::EncodedImageCallback::Result::OK) {
+    FILE* f = fopen("/tmp/bridge_debug.log", "a");
+    if (f) {
+      fprintf(f, "[passthrough B] ENCODE→SEND #%d: OnEncodedImage FAILED error=%d\n",
+          diag_frame, (int)result.error);
+      fclose(f);
+    }
+    RTC_LOG(LS_ERROR) << "Failed to send encoded image: error="
+                      << result.error;
+    return WEBRTC_VIDEO_CODEC_OK;
+  }
+
+  frame_id_ = result.frame_id;
+  static int vid_send_ok = 0;
+  vid_send_ok++;
+  if (vid_send_ok <= 5 || vid_send_ok % 150 == 0)
+    LW_LOG("[lw_extra] PassthroughVideoEncoder::Encode→Send: OK #%d size=%zu key=%d rtp_ts=%u\n",
+        vid_send_ok, pf.data.size(), (int)pf.is_key_frame, frame.rtp_timestamp());
+
+  // 返回 OK — VideoStreamEncoder::OnEncodedImage 内部 FillMetadataAndTimingInfo
+  // 现在能通过 frame.rtp_timestamp() 正确匹配 OnEncodeStarted 记录 ✅
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
@@ -226,92 +345,40 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
     return false;
   }
 
-  // 创建 EncodedImage
-  webrtc::EncodedImage encoded_image;
+  // ★ 方案 B: 不直接发送，入队等待 Encode() 被 VideoStreamEncoder 调用。
+  //    Encode() 由 dummy frame（通过 video_source->OnCapturedFrame 触发）
+  //    驱动，保证 OnFrame → OnEncodeStarted → Encode → OnEncodedImage
+  //    的完整链路，使 FillMetadataAndTimingInfo 能按 RTP timestamp 正确匹配。
+  {
+    webrtc::MutexLock lock(&pending_mutex_);
 
-  auto buffer = webrtc::EncodedImageBuffer::Create(frame.data, frame.size);
-  encoded_image.SetEncodedData(buffer);
-  encoded_image.set_size(frame.size);
-  encoded_image.SetRtpTimestamp(frame.timestamp);
-  encoded_image._encodedWidth = frame.width;
-  encoded_image._encodedHeight = frame.height;
+    // 队列满时 drop 最旧的帧（视频流场景下优先保证低延迟）
+    while (pending_frames_.size() >= kMaxPendingFrames) {
+      pending_frames_.pop_front();
+    }
 
-  // 设置帧类型
-  encoded_image.SetFrameType(
-      frame.is_key_frame ? webrtc::VideoFrameType::kVideoFrameKey
-                         : webrtc::VideoFrameType::kVideoFrameDelta);
-
-  // 设置编解码类型
-  webrtc::CodecSpecificInfo codec_specific_info;
-  codec_specific_info.codecType =
-      (frame.codec == lw_extra_VideoCodec::kH264) ? webrtc::kVideoCodecH264
-                                                  : webrtc::kVideoCodecAV1;
-
-  // 设置 H264 codec-specific 信息 — 内部 H264 encoder 在 OnEncodedImage 时设置
-  // 这些字段，passthrough encoder 也必须设置，否则 packetizer 使用零值。
-  if (frame.codec == lw_extra_VideoCodec::kH264) {
-    codec_specific_info.codecSpecific.H264.packetization_mode =
-        packetization_mode_;
-    codec_specific_info.codecSpecific.H264.temporal_idx =
-        webrtc::kNoTemporalIdx;
-    codec_specific_info.codecSpecific.H264.idr_frame = frame.is_key_frame;
-    codec_specific_info.codecSpecific.H264.base_layer_sync = false;
+    PendingEncodedFrame pf;
+    pf.data.assign(frame.data, frame.data + frame.size);
+    pf.codec = frame.codec;
+    pf.is_key_frame = frame.is_key_frame;
+    pf.width = frame.width;
+    pf.height = frame.height;
+    pending_frames_.push_back(std::move(pf));
   }
 
-  // ★ 诊断日志: 记录 EncodedImage + CodecSpecificInfo 完整信息
-  //    写 /tmp/bridge_debug.log，与 bridge 日志同一文件方便对照
-  static int diag_frame = 0;
-  diag_frame++;
-  if (diag_frame <= 10 || diag_frame % 100 == 0) {
+  static int queue_count = 0;
+  queue_count++;
+  if (queue_count <= 10 || queue_count % 150 == 0) {
     FILE* f = fopen("/tmp/bridge_debug.log", "a");
     if (f) {
-      fprintf(f, "[passthrough] SendEncodedFrame #%d: "
-          "size=%zu ts=%u wxh=%dx%d key=%d codec=%d "
-          "capture_time=%lld rtp_ts=%u "
-          "cs_pkt_mode=%d cs_temporal=0x%02X cs_idr=%d cs_blsync=%d\n",
-          diag_frame, frame.size, frame.timestamp,
-          frame.width, frame.height, (int)frame.is_key_frame,
-          (int)frame.codec,
-          (long long)encoded_image.capture_time_ms_,
-          encoded_image.RtpTimestamp(),
-          (frame.codec == lw_extra_VideoCodec::kH264
-               ? (int)codec_specific_info.codecSpecific.H264.packetization_mode
-               : -1),
-          (frame.codec == lw_extra_VideoCodec::kH264
-               ? codec_specific_info.codecSpecific.H264.temporal_idx
-               : 0),
-          (frame.codec == lw_extra_VideoCodec::kH264
-               ? (int)codec_specific_info.codecSpecific.H264.idr_frame
-               : -1),
-          (frame.codec == lw_extra_VideoCodec::kH264
-               ? (int)codec_specific_info.codecSpecific.H264.base_layer_sync
-               : -1));
+      fprintf(f, "[passthrough B] QUEUE #%d: size=%zu key=%d wxh=%dx%d depth=%zu\n",
+          queue_count, frame.size, (int)frame.is_key_frame,
+          frame.width, frame.height, pending_frames_.size());
       fclose(f);
     }
   }
-
-  // 通过回调发送
-  webrtc::EncodedImageCallback::Result result =
-      callback_->OnEncodedImage(encoded_image, &codec_specific_info);
-
-  if (result.error != webrtc::EncodedImageCallback::Result::OK) {
-    FILE* f = fopen("/tmp/bridge_debug.log", "a");
-    if (f) {
-      fprintf(f, "[passthrough] SendEncodedFrame #%d: OnEncodedImage FAILED error=%d\n",
-          diag_frame, (int)result.error);
-      fclose(f);
-    }
-    RTC_LOG(LS_ERROR) << "Failed to send encoded image: error="
-                      << result.error;
-    return false;
-  }
-
-  frame_id_ = result.frame_id;
-  static int vid_send_ok = 0;
-  vid_send_ok++;
-  if (vid_send_ok <= 5 || vid_send_ok % 150 == 0)
-    LW_LOG("[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OK #%d size=%zu key=%d\n",
-        vid_send_ok, frame.size, (int)frame.is_key_frame);
+  LW_LOG("[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: QUEUED #%d size=%zu key=%d depth=%zu\n",
+      queue_count, frame.size, (int)frame.is_key_frame, pending_frames_.size());
   return true;
 }
 
