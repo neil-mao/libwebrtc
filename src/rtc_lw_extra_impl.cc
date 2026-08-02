@@ -248,8 +248,7 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
                                                   : webrtc::kVideoCodecAV1;
 
   // 设置 H264 codec-specific 信息 — 内部 H264 encoder 在 OnEncodedImage 时设置
-  // 这些字段，passthrough encoder 也必须设置，否则 packetizer 使用零值
-  // NonInterleaved，与 SDP 协商的 packetization-mode 不一致。
+  // 这些字段，passthrough encoder 也必须设置，否则 packetizer 使用零值。
   if (frame.codec == lw_extra_VideoCodec::kH264) {
     codec_specific_info.codecSpecific.H264.packetization_mode =
         packetization_mode_;
@@ -257,20 +256,37 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
         webrtc::kNoTemporalIdx;
     codec_specific_info.codecSpecific.H264.idr_frame = frame.is_key_frame;
     codec_specific_info.codecSpecific.H264.base_layer_sync = false;
+  }
 
-    static int h264_diag = 0;
-    if (++h264_diag <= 5) {
-      LW_LOG("[lw_extra] SendEncodedFrame H264 codec_specific: "
-          "packetization_mode=%d (%s), temporal_idx=0x%02X, "
-          "idr_frame=%d, base_layer_sync=%d, key=%d\n",
-          (int)codec_specific_info.codecSpecific.H264.packetization_mode,
-          codec_specific_info.codecSpecific.H264.packetization_mode ==
-              webrtc::H264PacketizationMode::SingleNalUnit
-              ? "SingleNalUnit" : "NonInterleaved",
-          codec_specific_info.codecSpecific.H264.temporal_idx,
-          (int)codec_specific_info.codecSpecific.H264.idr_frame,
-          (int)codec_specific_info.codecSpecific.H264.base_layer_sync,
-          (int)frame.is_key_frame);
+  // ★ 诊断日志: 记录 EncodedImage + CodecSpecificInfo 完整信息
+  //    写 /tmp/bridge_debug.log，与 bridge 日志同一文件方便对照
+  static int diag_frame = 0;
+  diag_frame++;
+  if (diag_frame <= 10 || diag_frame % 100 == 0) {
+    FILE* f = fopen("/tmp/bridge_debug.log", "a");
+    if (f) {
+      fprintf(f, "[passthrough] SendEncodedFrame #%d: "
+          "size=%zu ts=%u wxh=%dx%d key=%d codec=%d "
+          "capture_time=%lld rtp_ts=%u "
+          "cs_pkt_mode=%d cs_temporal=0x%02X cs_idr=%d cs_blsync=%d\n",
+          diag_frame, frame.size, frame.timestamp,
+          frame.width, frame.height, (int)frame.is_key_frame,
+          (int)frame.codec,
+          (long long)encoded_image.capture_time_ms_,
+          encoded_image.RtpTimestamp(),
+          (frame.codec == lw_extra_VideoCodec::kH264
+               ? (int)codec_specific_info.codecSpecific.H264.packetization_mode
+               : -1),
+          (frame.codec == lw_extra_VideoCodec::kH264
+               ? codec_specific_info.codecSpecific.H264.temporal_idx
+               : 0),
+          (frame.codec == lw_extra_VideoCodec::kH264
+               ? (int)codec_specific_info.codecSpecific.H264.idr_frame
+               : -1),
+          (frame.codec == lw_extra_VideoCodec::kH264
+               ? (int)codec_specific_info.codecSpecific.H264.base_layer_sync
+               : -1));
+      fclose(f);
     }
   }
 
@@ -279,8 +295,12 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
       callback_->OnEncodedImage(encoded_image, &codec_specific_info);
 
   if (result.error != webrtc::EncodedImageCallback::Result::OK) {
-    LW_LOG("[lw_extra] PassthroughVideoEncoder::SendEncodedFrame: OnEncodedImage FAILED error=%d\n",
-        (int)result.error);
+    FILE* f = fopen("/tmp/bridge_debug.log", "a");
+    if (f) {
+      fprintf(f, "[passthrough] SendEncodedFrame #%d: OnEncodedImage FAILED error=%d\n",
+          diag_frame, (int)result.error);
+      fclose(f);
+    }
     RTC_LOG(LS_ERROR) << "Failed to send encoded image: error="
                       << result.error;
     return false;
