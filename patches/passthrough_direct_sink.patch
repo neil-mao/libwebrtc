@@ -15,7 +15,7 @@ index 1a8f895c7b..7cbc596a69 100644
    // Return value                : WEBRTC_VIDEO_CODEC_OK if OK, < 0 otherwise.
    virtual int32_t Release() = 0;
 diff --git a/video/video_stream_encoder.cc b/video/video_stream_encoder.cc
-index 166d2e9593..6e7a55643f 100644
+index 166d2e9593..0f75ad0919 100644
 --- a/video/video_stream_encoder.cc
 +++ b/video/video_stream_encoder.cc
 @@ -927,6 +927,11 @@ void VideoStreamEncoder::SetSink(EncoderSink* sink, bool rotation_applied) {
@@ -29,4 +29,17 @@ index 166d2e9593..6e7a55643f 100644
 +    }
    });
  }
+ 
+@@ -1088,6 +1093,12 @@ void VideoStreamEncoder::ReconfigureEncoder() {
+ 
+     encoder_->SetFecControllerOverride(fec_controller_override_);
+ 
++    // Notify passthrough encoder about the RTP sink if available.
++    // (SetSink may have been called before encoder_ was created.)
++    if (sink_) {
++      encoder_->SetEncoderSink(sink_);
++    }
++
+     encoder_reset_required = true;
+   }
  
