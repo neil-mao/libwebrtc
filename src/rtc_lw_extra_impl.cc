@@ -261,11 +261,12 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
   if (diag_frame <= 10 || diag_frame % 150 == 0) {
     FILE* f = fopen("/tmp/bridge_debug.log", "a");
     if (f) {
-      fprintf(f, "[passthrough A] SEND #%d: size=%zu wxh=%dx%d key=%d codec=%d ts=%u "
+      fprintf(f, "[passthrough A] SEND #%d: size=%zu wxh=%dx%d key=%d codec=%d ts=%u via=%s "
           "cs_pkt=%d cs_tempidx=0x%02X cs_idr=%d cs_blsync=%d\n",
           diag_frame, frame.size,
           frame.width, frame.height, (int)frame.is_key_frame,
           (int)frame.codec, frame.timestamp,
+          direct_sink_ ? "direct" : "vse",
           (frame.codec == lw_extra_VideoCodec::kH264
                ? (int)codec_specific_info.codecSpecific.H264.packetization_mode
                : -1),
