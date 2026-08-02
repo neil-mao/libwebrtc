@@ -5,7 +5,7 @@ index 1a8f895c7b..7cbc596a69 100644
 @@ -403,6 +403,11 @@ class RTC_EXPORT VideoEncoder {
    virtual int32_t RegisterEncodeCompleteCallback(
        EncodedImageCallback* callback) = 0;
-
+ 
 +  // Set a direct sink for encoded images, bypassing VideoStreamEncoder.
 +  // Used by passthrough encoders to send encoded data directly to the RTP layer
 +  // without going through VSE augmentation (FillMetadata, SPS VUI rewriting).
@@ -29,3 +29,4 @@ index 166d2e9593..6e7a55643f 100644
 +    }
    });
  }
+ 
