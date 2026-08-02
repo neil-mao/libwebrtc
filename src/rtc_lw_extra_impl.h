@@ -140,9 +140,11 @@ class lw_extra_PassthroughVideoEncoder : public webrtc::VideoEncoder {
   lw_extra_VideoCodec codec_ = lw_extra_VideoCodec::kH264;
   bool initialized_ = false;
   uint32_t frame_id_ = 0;
-  // SDP 协商的 H264 packetization mode，SendEncodedFrame 时写入 CodecSpecificInfo
+  // H264 packetization mode — passthrough 编码数据可能包含大 NAL，
+  // 必须使用 NonInterleaved 允许 FU-A 分片。SDP 协商 mode=0 限制
+  // 的是内部 encoder 输出，不适用于外部预编码数据。
   webrtc::H264PacketizationMode packetization_mode_ =
-      webrtc::H264PacketizationMode::SingleNalUnit;
+      webrtc::H264PacketizationMode::NonInterleaved;
 };
 
 // ==================== 自定义音频编码器 ====================

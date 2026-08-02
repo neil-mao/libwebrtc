@@ -408,9 +408,12 @@ std::vector<webrtc::SdpVideoFormat>
 lw_extra_PassthroughVideoEncoderFactory::GetSupportedFormats() const {
   std::vector<webrtc::SdpVideoFormat> formats;
 
-  // 支持 H264
+  // 支持 H264 — 必须声明 packetization-mode=1 (NonInterleaved)，
+  // 因为 passthrough 编码数据来自外部，可能包含超大 NAL 需要 FU-A 分片。
+  // SDP 的 packetization-mode=0 (SingleNalUnit) 只适用于内部 encoder。
   {
-    webrtc::SdpVideoFormat format("H264");
+    webrtc::SdpVideoFormat format("H264",
+        {{"packetization-mode", "1"}});
     formats.push_back(format);
   }
 
@@ -427,25 +430,6 @@ std::unique_ptr<webrtc::VideoEncoder>
 lw_extra_PassthroughVideoEncoderFactory::Create(
     const webrtc::Environment& env, const webrtc::SdpVideoFormat& format) {
   auto encoder = std::make_unique<lw_extra_PassthroughVideoEncoder>();
-
-  // 从 SDP fmtp 参数解析 H264 packetization-mode，写入 encoder
-  if (format.name == "H264") {
-    auto it = format.parameters.find("packetization-mode");
-    if (it != format.parameters.end()) {
-      if (it->second == "0") {
-        encoder->SetPacketizationMode(
-            webrtc::H264PacketizationMode::SingleNalUnit);
-        LW_LOG("[lw_extra] Factory::Create: SDP packetization-mode=0 → SingleNalUnit\n");
-      } else if (it->second == "1") {
-        encoder->SetPacketizationMode(
-            webrtc::H264PacketizationMode::NonInterleaved);
-        LW_LOG("[lw_extra] Factory::Create: SDP packetization-mode=1 → NonInterleaved\n");
-      }
-    } else {
-      LW_LOG("[lw_extra] Factory::Create: WARNING no packetization-mode in SDP fmtp, using default\n");
-    }
-  }
-
   encoder_queue_.push_back(encoder.get());
   LW_LOG("[lw_extra] PassthroughVideoEncoderFactory::Create: encoder=%p queue_size=%zu format=%s\n",
       (void*)encoder.get(), encoder_queue_.size(), format.name.c_str());
