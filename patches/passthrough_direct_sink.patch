@@ -1,0 +1,31 @@
+diff --git a/api/video_codecs/video_encoder.h b/api/video_codecs/video_encoder.h
+index 1a8f895c7b..7cbc596a69 100644
+--- a/api/video_codecs/video_encoder.h
++++ b/api/video_codecs/video_encoder.h
+@@ -403,6 +403,11 @@ class RTC_EXPORT VideoEncoder {
+   virtual int32_t RegisterEncodeCompleteCallback(
+       EncodedImageCallback* callback) = 0;
+
++  // Set a direct sink for encoded images, bypassing VideoStreamEncoder.
++  // Used by passthrough encoders to send encoded data directly to the RTP layer
++  // without going through VSE augmentation (FillMetadata, SPS VUI rewriting).
++  virtual void SetEncoderSink(EncodedImageCallback* /* sink */) {}
++
+   // Free encoder memory.
+   // Return value                : WEBRTC_VIDEO_CODEC_OK if OK, < 0 otherwise.
+   virtual int32_t Release() = 0;
+diff --git a/video/video_stream_encoder.cc b/video/video_stream_encoder.cc
+index 166d2e9593..6e7a55643f 100644
+--- a/video/video_stream_encoder.cc
++++ b/video/video_stream_encoder.cc
+@@ -927,6 +927,11 @@ void VideoStreamEncoder::SetSink(EncoderSink* sink, bool rotation_applied) {
+   encoder_queue_->PostTask([this, sink] {
+     RTC_DCHECK_RUN_ON(encoder_queue_.get());
+     sink_ = sink;
++    // Notify passthrough encoders about the direct RTP sink so they can
++    // bypass VSE augmentation (FillMetadataAndTimingInfo, UpdateBitstream).
++    if (encoder_) {
++      encoder_->SetEncoderSink(sink);
++    }
+   });
+ }
