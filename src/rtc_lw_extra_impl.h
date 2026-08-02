@@ -129,12 +129,20 @@ class lw_extra_PassthroughVideoEncoder : public webrtc::VideoEncoder {
     return lw_extra_VideoCodec::kH264;
   }
 
+  // 设置 SDP 协商的 H264 packetization mode (从 fmtp 参数解析)
+  void SetPacketizationMode(webrtc::H264PacketizationMode mode) {
+    packetization_mode_ = mode;
+  }
+
  private:
   webrtc::EncodedImageCallback* callback_ = nullptr;
   webrtc::VideoCodec codec_settings_;
   lw_extra_VideoCodec codec_ = lw_extra_VideoCodec::kH264;
   bool initialized_ = false;
   uint32_t frame_id_ = 0;
+  // SDP 协商的 H264 packetization mode，SendEncodedFrame 时写入 CodecSpecificInfo
+  webrtc::H264PacketizationMode packetization_mode_ =
+      webrtc::H264PacketizationMode::SingleNalUnit;
 };
 
 // ==================== 自定义音频编码器 ====================

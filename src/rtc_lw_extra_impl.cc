@@ -247,6 +247,33 @@ bool lw_extra_PassthroughVideoEncoder::SendEncodedFrame(
       (frame.codec == lw_extra_VideoCodec::kH264) ? webrtc::kVideoCodecH264
                                                   : webrtc::kVideoCodecAV1;
 
+  // 设置 H264 codec-specific 信息 — 内部 H264 encoder 在 OnEncodedImage 时设置
+  // 这些字段，passthrough encoder 也必须设置，否则 packetizer 使用零值
+  // NonInterleaved，与 SDP 协商的 packetization-mode 不一致。
+  if (frame.codec == lw_extra_VideoCodec::kH264) {
+    codec_specific_info.codecSpecific.H264.packetization_mode =
+        packetization_mode_;
+    codec_specific_info.codecSpecific.H264.temporal_idx =
+        webrtc::kNoTemporalIdx;
+    codec_specific_info.codecSpecific.H264.idr_frame = frame.is_key_frame;
+    codec_specific_info.codecSpecific.H264.base_layer_sync = false;
+
+    static int h264_diag = 0;
+    if (++h264_diag <= 5) {
+      LW_LOG("[lw_extra] SendEncodedFrame H264 codec_specific: "
+          "packetization_mode=%d (%s), temporal_idx=0x%02X, "
+          "idr_frame=%d, base_layer_sync=%d, key=%d\n",
+          (int)codec_specific_info.codecSpecific.H264.packetization_mode,
+          codec_specific_info.codecSpecific.H264.packetization_mode ==
+              webrtc::H264PacketizationMode::SingleNalUnit
+              ? "SingleNalUnit" : "NonInterleaved",
+          codec_specific_info.codecSpecific.H264.temporal_idx,
+          (int)codec_specific_info.codecSpecific.H264.idr_frame,
+          (int)codec_specific_info.codecSpecific.H264.base_layer_sync,
+          (int)frame.is_key_frame);
+    }
+  }
+
   // 通过回调发送
   webrtc::EncodedImageCallback::Result result =
       callback_->OnEncodedImage(encoded_image, &codec_specific_info);
@@ -400,6 +427,25 @@ std::unique_ptr<webrtc::VideoEncoder>
 lw_extra_PassthroughVideoEncoderFactory::Create(
     const webrtc::Environment& env, const webrtc::SdpVideoFormat& format) {
   auto encoder = std::make_unique<lw_extra_PassthroughVideoEncoder>();
+
+  // 从 SDP fmtp 参数解析 H264 packetization-mode，写入 encoder
+  if (format.name == "H264") {
+    auto it = format.parameters.find("packetization-mode");
+    if (it != format.parameters.end()) {
+      if (it->second == "0") {
+        encoder->SetPacketizationMode(
+            webrtc::H264PacketizationMode::SingleNalUnit);
+        LW_LOG("[lw_extra] Factory::Create: SDP packetization-mode=0 → SingleNalUnit\n");
+      } else if (it->second == "1") {
+        encoder->SetPacketizationMode(
+            webrtc::H264PacketizationMode::NonInterleaved);
+        LW_LOG("[lw_extra] Factory::Create: SDP packetization-mode=1 → NonInterleaved\n");
+      }
+    } else {
+      LW_LOG("[lw_extra] Factory::Create: WARNING no packetization-mode in SDP fmtp, using default\n");
+    }
+  }
+
   encoder_queue_.push_back(encoder.get());
   LW_LOG("[lw_extra] PassthroughVideoEncoderFactory::Create: encoder=%p queue_size=%zu format=%s\n",
       (void*)encoder.get(), encoder_queue_.size(), format.name.c_str());
