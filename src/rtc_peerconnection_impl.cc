@@ -15,6 +15,7 @@
 #include "rtc_rtp_receiver_impl.h"
 #include "rtc_rtp_sender_impl.h"
 #include "rtc_rtp_transceiver_impl.h"
+#include "rtc_lw_extra.h"
 
 using webrtc::Thread;
 
@@ -436,6 +437,12 @@ bool RTCPeerConnectionImpl::Initialize() {
     config.screencast_min_bitrate = configuration_.screencast_min_bitrate;
 
   config.set_dscp(configuration_.enable_dscp);
+
+  // Keep lw_extra symbols from being stripped by --gc-sections / LTO
+  static volatile const void* _keep_lw_extra =
+      reinterpret_cast<const void*>(
+          &libwebrtc::lw_extra_EncodedSender::Create);
+  __asm__ __volatile__("" : : "r"(_keep_lw_extra));
 
   RTCMediaConstraintsImpl* media_constraints =
       static_cast<RTCMediaConstraintsImpl*>(constraints_.get());

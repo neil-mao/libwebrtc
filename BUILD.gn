@@ -96,6 +96,7 @@ rtc_shared_library("libwebrtc") {
     "include/rtc_video_source.h",
     "include/rtc_video_track.h",
     "include/rtc_logging.h",
+    "include/rtc_lw_extra.h",
     "include/helper.h",
     "src/helper.cc",
     "src/base/portable.cc",
@@ -159,6 +160,8 @@ rtc_shared_library("libwebrtc") {
     "src/rtc_video_track_impl.cc",
     "src/rtc_video_track_impl.h",
     "src/rtc_logging.cc",
+    "src/rtc_lw_extra_impl.cc",
+    "src/rtc_lw_extra_impl.h",
   ]
 
   # intel media sdk

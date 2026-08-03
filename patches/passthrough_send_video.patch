@@ -1,0 +1,123 @@
+diff --git a/call/video_send_stream.h b/call/video_send_stream.h
+index c5a24d2c48..e70d6f19c2 100644
+--- a/call/video_send_stream.h
++++ b/call/video_send_stream.h
+@@ -46,6 +46,7 @@
+ namespace webrtc {
+ 
+ class FrameEncryptorInterface;
++class RtpVideoSenderInterface;
+ 
+ class VideoSendStream {
+  public:
+@@ -268,6 +269,11 @@ class VideoSendStream {
+ 
+   virtual void GenerateKeyFrame(const std::vector<std::string>& rids) = 0;
+ 
++  // Scheme D: Get the RtpVideoSender to send pre-encoded frames directly,
++  // bypassing the encoder pipeline (VSE, SPS VUI rewriting, etc.).
++  // Returns nullptr if not available (e.g. stream not started yet).
++  virtual RtpVideoSenderInterface* GetRtpVideoSender() { return nullptr; }
++
+  protected:
+   virtual ~VideoSendStream() {}
+ };
+diff --git a/media/base/media_channel.h b/media/base/media_channel.h
+index 527f6d15ff..3b5da3200b 100644
+--- a/media/base/media_channel.h
++++ b/media/base/media_channel.h
+@@ -67,6 +67,7 @@
+ namespace webrtc {
+ class VideoFrame;
+ struct VideoFormat;
++class RtpVideoSenderInterface;
+ 
+ webrtc::RTCError InvokeSetParametersCallback(SetParametersCallback& callback,
+                                              RTCError error);
+@@ -981,6 +982,12 @@ class VideoMediaSendChannelInterface : public MediaSendChannelInterface {
+   virtual RtcpMode SendCodecRtcpMode() const = 0;
+   virtual bool SendCodecHasLntf() const = 0;
+   virtual std::optional<int> SendCodecRtxTime() const = 0;
++
++  // Scheme D: Get the RtpVideoSender for a given SSRC to send pre-encoded
++  // frames directly, bypassing the encoder pipeline.
++  virtual RtpVideoSenderInterface* GetRtpVideoSender(uint32_t /*ssrc*/) {
++    return nullptr;
++  }
+ };
+ 
+ class VideoMediaReceiveChannelInterface : public MediaReceiveChannelInterface {
+diff --git a/media/engine/webrtc_video_engine.h b/media/engine/webrtc_video_engine.h
+index 9b201ec0d1..e74f9b2ecd 100644
+--- a/media/engine/webrtc_video_engine.h
++++ b/media/engine/webrtc_video_engine.h
+@@ -208,6 +208,13 @@ class WebRtcVideoSendChannel : public MediaChannelUtil,
+   bool RemoveSendStream(uint32_t ssrc) override;
+   void FillBitrateInfo(BandwidthEstimationInfo* bwe_info) override;
+   bool GetStats(VideoMediaSendInfo* info) override;
++  RtpVideoSenderInterface* GetRtpVideoSender(uint32_t ssrc) override {
++    auto it = send_streams_.find(ssrc);
++    if (it != send_streams_.end()) {
++      return it->second->GetRtpVideoSender();
++    }
++    return nullptr;
++  }
+ 
+   void OnPacketSent(const SentPacketInfo& sent_packet) override;
+   void OnReadyToSend(bool ready) override;
+@@ -355,6 +362,9 @@ class WebRtcVideoSendChannel : public MediaChannelUtil,
+     void SetEncoderToPacketizerFrameTransformer(
+         scoped_refptr<FrameTransformerInterface> frame_transformer);
+     void GenerateKeyFrame(const std::vector<std::string>& rids);
++    RtpVideoSenderInterface* GetRtpVideoSender() {
++      return stream_ ? stream_->GetRtpVideoSender() : nullptr;
++    }
+ 
+    private:
+     // Parameters needed to reconstruct the underlying stream.
+diff --git a/pc/rtp_sender.h b/pc/rtp_sender.h
+index eaffd4ef0f..0c892c7632 100644
+--- a/pc/rtp_sender.h
++++ b/pc/rtp_sender.h
+@@ -37,6 +37,7 @@
+ #include "api/sequence_checker.h"
+ #include "api/task_queue/task_queue_base.h"
+ #include "api/video_codecs/video_encoder_factory.h"
++#include "call/rtp_video_sender_interface.h"
+ #include "media/base/audio_source.h"
+ #include "media/base/codec.h"
+ #include "media/base/media_channel.h"
+@@ -297,6 +298,19 @@ class RtpSenderBase : public RtpSenderInternal, public ObserverInterface {
+       encoder_selector_;
+ 
+   virtual RTCError GenerateKeyFrame(const std::vector<std::string>& rids) = 0;
++
++  // Scheme D: Get the RtpVideoSender for sending pre-encoded frames directly,
++  // bypassing the encoder pipeline (no VSE, no SPS VUI rewriting).
++  RtpVideoSenderInterface* GetRtpVideoSender() {
++    if (!media_channel_ || ssrc_ == 0) {
++      return nullptr;
++    }
++    auto* video_channel = media_channel_->AsVideoSendChannel();
++    if (!video_channel) {
++      return nullptr;
++    }
++    return video_channel->GetRtpVideoSender(ssrc_);
++  }
+ };
+ 
+ // LocalAudioSinkAdapter receives data callback as a sink to the local
+diff --git a/video/video_send_stream_impl.h b/video/video_send_stream_impl.h
+index 9885bd83f1..d699b5167d 100644
+--- a/video/video_send_stream_impl.h
++++ b/video/video_send_stream_impl.h
+@@ -128,6 +128,9 @@ class VideoSendStreamImpl : public webrtc::VideoSendStream,
+   void StopPermanentlyAndGetRtpStates(RtpStateMap* rtp_state_map,
+                                       RtpPayloadStateMap* payload_state_map);
+   void GenerateKeyFrame(const std::vector<std::string>& rids) override;
++  RtpVideoSenderInterface* GetRtpVideoSender() override {
++    return rtp_video_sender_;
++  }
+ 
+   // TODO(holmer): Move these to RtpTransportControllerSend.
+   std::map<uint32_t, RtpState> GetRtpStates() const;
