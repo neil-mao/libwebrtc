@@ -101,6 +101,29 @@ index 9b201ec0d1..1abe0aee04 100644
  
     private:
      // Parameters needed to reconstruct the underlying stream.
+diff --git a/modules/rtp_rtcp/source/rtp_format_h264.cc b/modules/rtp_rtcp/source/rtp_format_h264.cc
+index b779859203..44f685bf42 100644
+--- a/modules/rtp_rtcp/source/rtp_format_h264.cc
++++ b/modules/rtp_rtcp/source/rtp_format_h264.cc
+@@ -41,7 +41,17 @@ RtpPacketizerH264::RtpPacketizerH264(ArrayView<const uint8_t> payload,
+   RTC_CHECK(packetization_mode == H264PacketizationMode::NonInterleaved ||
+             packetization_mode == H264PacketizationMode::SingleNalUnit);
+ 
+-  for (const auto& nalu : H264::FindNaluIndices(payload)) {
++  static int diag_count = 0;
++  diag_count++;
++  auto nalu_indices = H264::FindNaluIndices(payload);
++  if (diag_count <= 5 || diag_count % 100 == 0) {
++    fprintf(stderr, "[rtp-h264-pkt] #%d mode=%s(%d) payload=%zuB nalus=%zu\n",
++        diag_count,
++        packetization_mode == H264PacketizationMode::NonInterleaved ? "NonInterleaved" : "SingleNalUnit",
++        (int)packetization_mode, payload.size(), nalu_indices.size());
++  }
++
++  for (const auto& nalu : nalu_indices) {
+     input_fragments_.push_back(
+         payload.subview(nalu.payload_start_offset, nalu.payload_size));
+   }
 diff --git a/pc/rtp_sender.h b/pc/rtp_sender.h
 index eaffd4ef0f..1f3d8e44f8 100644
 --- a/pc/rtp_sender.h
