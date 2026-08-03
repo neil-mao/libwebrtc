@@ -1,8 +1,8 @@
 diff --git a/api/rtp_sender_interface.h b/api/rtp_sender_interface.h
-index db04b9580c..a7f9e9b508 100644
+index db04b9580c..b943cf80c6 100644
 --- a/api/rtp_sender_interface.h
 +++ b/api/rtp_sender_interface.h
-@@ -36,7 +36,11 @@
+@@ -36,6 +36,9 @@
  
  namespace webrtc {
  
@@ -10,11 +10,9 @@ index db04b9580c..a7f9e9b508 100644
 +class RtpVideoSenderInterface;
 +
  class RtpSenderObserverInterface {
-+ public:
   public:
    // The observer is called when the first media packet is sent for the observed
-   // sender. It is called immediately if the first packet was already sent.
-@@ -130,6 +134,10 @@ class RTC_EXPORT RtpSenderInterface : public RefCountInterface,
+@@ -130,6 +133,10 @@ class RTC_EXPORT RtpSenderInterface : public RefCountInterface,
        std::unique_ptr<VideoEncoderFactory::EncoderSelectorInterface>
            encoder_selector) = 0;
  
@@ -104,7 +102,7 @@ index 9b201ec0d1..1abe0aee04 100644
     private:
      // Parameters needed to reconstruct the underlying stream.
 diff --git a/pc/rtp_sender.h b/pc/rtp_sender.h
-index eaffd4ef0f..79f1c2d59e 100644
+index eaffd4ef0f..1f3d8e44f8 100644
 --- a/pc/rtp_sender.h
 +++ b/pc/rtp_sender.h
 @@ -37,6 +37,7 @@
@@ -123,7 +121,7 @@ index eaffd4ef0f..79f1c2d59e 100644
 + public:
 +  // Scheme D: Get the RtpVideoSender for sending pre-encoded frames directly,
 +  // bypassing the encoder pipeline (no VSE, no SPS VUI rewriting).
-+  RtpVideoSenderInterface* GetRtpVideoSender() {
++  RtpVideoSenderInterface* GetRtpVideoSender() override {
 +    if (!media_channel_ || ssrc_ == 0) {
 +      return nullptr;
 +    }
@@ -137,14 +135,14 @@ index eaffd4ef0f..79f1c2d59e 100644
  
  // LocalAudioSinkAdapter receives data callback as a sink to the local
 diff --git a/pc/rtp_sender_proxy.h b/pc/rtp_sender_proxy.h
-index 68caa3b835..4630a6453f 100644
+index 68caa3b835..8084d8e13d 100644
 --- a/pc/rtp_sender_proxy.h
 +++ b/pc/rtp_sender_proxy.h
 @@ -42,6 +42,7 @@ PROXY_CONSTMETHOD0(scoped_refptr<DtlsTransportInterface>, dtls_transport)
  PROXY_CONSTMETHOD0(uint32_t, ssrc)
  BYPASS_PROXY_CONSTMETHOD0(webrtc::MediaType, media_type)
  BYPASS_PROXY_CONSTMETHOD0(std::string, id)
-+BYPASS_PROXY_CONSTMETHOD0(RtpVideoSenderInterface*, GetRtpVideoSender)
++BYPASS_PROXY_METHOD0(RtpVideoSenderInterface*, GetRtpVideoSender)
  PROXY_CONSTMETHOD0(std::vector<std::string>, stream_ids)
  PROXY_CONSTMETHOD0(std::vector<RtpEncodingParameters>, init_send_encodings)
  PROXY_CONSTMETHOD0(RtpParameters, GetParameters)
