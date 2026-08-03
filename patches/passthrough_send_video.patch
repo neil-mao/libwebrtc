@@ -75,14 +75,15 @@ index 527f6d15ff..3b5da3200b 100644
  
  class VideoMediaReceiveChannelInterface : public MediaReceiveChannelInterface {
 diff --git a/media/engine/webrtc_video_engine.h b/media/engine/webrtc_video_engine.h
-index 9b201ec0d1..e74f9b2ecd 100644
+index 9b201ec0d1..1abe0aee04 100644
 --- a/media/engine/webrtc_video_engine.h
 +++ b/media/engine/webrtc_video_engine.h
-@@ -208,6 +208,13 @@ class WebRtcVideoSendChannel : public MediaChannelUtil,
+@@ -208,6 +208,14 @@ class WebRtcVideoSendChannel : public MediaChannelUtil,
    bool RemoveSendStream(uint32_t ssrc) override;
    void FillBitrateInfo(BandwidthEstimationInfo* bwe_info) override;
    bool GetStats(VideoMediaSendInfo* info) override;
-+  RtpVideoSenderInterface* GetRtpVideoSender(uint32_t ssrc) override {
++  RtpVideoSenderInterface* GetRtpVideoSender(uint32_t ssrc) override
++      RTC_NO_THREAD_SAFETY_ANALYSIS {
 +    auto it = send_streams_.find(ssrc);
 +    if (it != send_streams_.end()) {
 +      return it->second->GetRtpVideoSender();
@@ -92,11 +93,11 @@ index 9b201ec0d1..e74f9b2ecd 100644
  
    void OnPacketSent(const SentPacketInfo& sent_packet) override;
    void OnReadyToSend(bool ready) override;
-@@ -355,6 +362,9 @@ class WebRtcVideoSendChannel : public MediaChannelUtil,
+@@ -355,6 +363,9 @@ class WebRtcVideoSendChannel : public MediaChannelUtil,
      void SetEncoderToPacketizerFrameTransformer(
          scoped_refptr<FrameTransformerInterface> frame_transformer);
      void GenerateKeyFrame(const std::vector<std::string>& rids);
-+    RtpVideoSenderInterface* GetRtpVideoSender() {
++    RtpVideoSenderInterface* GetRtpVideoSender() RTC_NO_THREAD_SAFETY_ANALYSIS {
 +      return stream_ ? stream_->GetRtpVideoSender() : nullptr;
 +    }
  
