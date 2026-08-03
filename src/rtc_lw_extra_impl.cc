@@ -10,11 +10,8 @@
 #include "rtc_base/logging.h"
 #include "rtc_rtp_sender_impl.h"
 
-// ── 导航所需内部头文件 ──────────────────────────────────
-// 从 RtpSenderBase 的 GetRtpVideoSender() 获取 RtpVideoSenderInterface*
-// 然后直接调用 OnEncodedImage() 发送编码帧。
+// ── 导航：RtpSenderInterface::GetRtpVideoSender() → RtpVideoSenderInterface ──
 #include "call/rtp_video_sender_interface.h"
-#include "pc/rtp_sender.h"
 
 namespace libwebrtc {
 
@@ -54,9 +51,8 @@ void* lw_extra_EncodedSenderImpl::GetRtpVideoSender() {
     return nullptr;
   }
 
-  // ── 导航：RTCRtpSender → RtpSenderBase → GetRtpVideoSender() ──
-  // RTCRtpSenderImpl 持有 webrtc::RtpSenderInterface（即 RtpSenderBase）
-  // RtpSenderBase::GetRtpVideoSender() 是我们新增的方法，
+  // ── 导航：RTCRtpSender → RtpSenderInterface → GetRtpVideoSender() ──
+  // RtpSenderInterface::GetRtpVideoSender() 是我们新增的方法 (BYPASS proxy)，
   // 内部通过 media_channel_ → VideoMediaSendChannelInterface → RtpVideoSenderInterface
 
   auto* sender_impl = static_cast<RTCRtpSenderImpl*>(rtp_sender_.get());
@@ -66,10 +62,8 @@ void* lw_extra_EncodedSenderImpl::GetRtpVideoSender() {
     return nullptr;
   }
 
-  // RtpSenderInterface → RtpSenderBase (has GetRtpVideoSender)
-  auto* sender_base = static_cast<webrtc::RtpSenderBase*>(rtc_sender.get());
-
-  auto* video_sender = sender_base->GetRtpVideoSender();
+  // 直接调用 RtpSenderInterface::GetRtpVideoSender() — proxy bypass 到内部实现
+  auto* video_sender = rtc_sender->GetRtpVideoSender();
   if (!video_sender) {
     LW_LOG("EncodedSenderImpl::GetRtpVideoSender: GetRtpVideoSender returned null "
            "(media_channel not set or not video)\n");
