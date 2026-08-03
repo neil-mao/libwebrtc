@@ -173,4 +173,25 @@ bool lw_extra_EncodedSenderImpl::SendEncodedVideoFrame(
   return true;
 }
 
+bool lw_extra_EncodedSenderImpl::SendEncodedAudioFrame(
+    const lw_extra_EncodedAudioFrame& frame) {
+  (void)frame;
+  LW_LOG("EncodedSenderImpl::SendEncodedAudioFrame: TODO — audio not yet implemented\n");
+  return false;
+}
+
+void lw_extra_EncodedSenderImpl::SetAudioEncodedSend(bool enabled) {
+  (void)enabled;
+  LW_LOG("EncodedSenderImpl::SetAudioEncodedSend: TODO — audio not yet implemented\n");
+}
+
+// ==================== EncodedReceiver stub ====================
+
+lw_extra_EncodedReceiver* lw_extra_EncodedReceiver::Create(
+    scoped_refptr<RTCRtpReceiver> rtp_receiver) {
+  (void)rtp_receiver;
+  LW_LOG("EncodedReceiver::Create: TODO — receiver not yet ported to scheme D\n");
+  return nullptr;
+}
+
 }  // namespace libwebrtc

@@ -49,9 +49,10 @@ class lw_extra_EncodedSenderImpl : public lw_extra_EncodedSender {
   ~lw_extra_EncodedSenderImpl() override;
 
   bool SendEncodedVideoFrame(const lw_extra_EncodedVideoFrame& frame) override;
+  bool SendEncodedAudioFrame(const lw_extra_EncodedAudioFrame& frame) override;
   void SetVideoEncodedSend(bool enabled) override;
+  void SetAudioEncodedSend(bool enabled) override;
 
-  /// 获取底层的 RtpVideoSenderInterface（延迟初始化，由 SetVideoEncodedSend 触发）
   void* GetRtpVideoSender();
 
  private:
