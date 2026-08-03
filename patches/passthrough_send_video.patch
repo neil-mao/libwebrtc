@@ -76,7 +76,7 @@ index 9b201ec0d1..e74f9b2ecd 100644
     private:
      // Parameters needed to reconstruct the underlying stream.
 diff --git a/pc/rtp_sender.h b/pc/rtp_sender.h
-index eaffd4ef0f..0c892c7632 100644
+index eaffd4ef0f..79f1c2d59e 100644
 --- a/pc/rtp_sender.h
 +++ b/pc/rtp_sender.h
 @@ -37,6 +37,7 @@
@@ -87,11 +87,12 @@ index eaffd4ef0f..0c892c7632 100644
  #include "media/base/audio_source.h"
  #include "media/base/codec.h"
  #include "media/base/media_channel.h"
-@@ -297,6 +298,19 @@ class RtpSenderBase : public RtpSenderInternal, public ObserverInterface {
+@@ -297,6 +298,20 @@ class RtpSenderBase : public RtpSenderInternal, public ObserverInterface {
        encoder_selector_;
  
    virtual RTCError GenerateKeyFrame(const std::vector<std::string>& rids) = 0;
 +
++ public:
 +  // Scheme D: Get the RtpVideoSender for sending pre-encoded frames directly,
 +  // bypassing the encoder pipeline (no VSE, no SPS VUI rewriting).
 +  RtpVideoSenderInterface* GetRtpVideoSender() {

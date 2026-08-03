@@ -60,7 +60,6 @@ class lw_extra_EncodedSenderImpl : public lw_extra_EncodedSender {
   bool video_enabled_ = false;
   bool initialized_ = false;
   uint32_t ssrc_ = 0;
-  lw_extra_VideoCodec codec_ = lw_extra_VideoCodec::kH264;
 
   // RtpVideoSenderInterface* - 延迟获取，由 SetVideoEncodedSend 触发
   // 不直接 include RtpVideoSenderInterface 头文件，用 void* 避免依赖
